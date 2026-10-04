@@ -1,0 +1,21 @@
+{
+  "name": "comfyui-mobile",
+  "version": "1.7.2",
+  "description": "手机广域网远程控制电脑 ComfyUI：安全网关 + 移动端 PWA",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/src/index.js",
+    "mock": "node scripts/mock-comfy.js",
+    "test": "node --test \"server/test/*.test.js\"",
+    "check:privacy": "node scripts/check-privacy.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.0",
+    "ws": "^8.18.0"
+  }
+}

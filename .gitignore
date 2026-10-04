@@ -1,0 +1,28 @@
+node_modules/
+server/config.json
+server/.thumb-cache/
+cloudflared
+cloudflared.exe
+tmp-*.json
+tmp-*.mjs
+cm-*.log
+cm-*.txt
+*.log
+logs/
+.DS_Store
+wt-probe*.json
+probe-result.json
+ws-capture.json
+tmpl-index.json
+gateway.log
+# 仓库根 .gitignore 的 lib/ 规则会误伤前端库目录，这里显式收回
+!web/js/lib/
+!web/js/lib/*
+# 含访问令牌，绝不能入库
+手机链接.txt
+本地备注.md
+.privacy-patterns
+
+# 本机自测工作区与 ZCode 工具配置（不入库）
+.selftest/
+.zcodeignore

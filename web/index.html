@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'">
+  <meta name="theme-color" content="#10131a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ComfyUI">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <title>ComfyUI Mobile</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header id="topbar" class="topbar hidden">
+    <span id="conn-dot" class="dot off" title="连接状态"></span>
+    <span id="topbar-title" class="topbar-title">ComfyUI</span>
+    <span id="topbar-info" class="topbar-info muted"></span>
+    <button id="btn-interrupt" class="icon-btn" title="中断当前任务">⏹</button>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav id="bottomnav" class="bottomnav hidden">
+    <button data-nav="workflows"><span class="nav-ico">🗂</span><span data-i18n="工作流">工作流</span></button>
+    <button data-nav="run"><span class="nav-ico">▶️</span><span data-i18n="运行">运行</span></button>
+    <button data-nav="gallery"><span class="nav-ico">🖼️</span><span data-i18n="图库">图库</span></button>
+    <button data-nav="queue"><span class="nav-ico">⏳</span><span data-i18n="队列">队列</span></button>
+    <button data-nav="more"><span class="nav-ico">⋯</span><span data-i18n="更多">更多</span></button>
+  </nav>
+
+  <div id="overlay" class="overlay hidden"></div>
+  <div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
+  <div id="sheet" class="sheet hidden"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <link rel="modulepreload" href="/js/app.js">
+  <link rel="modulepreload" href="/js/lib/api.js">
+  <link rel="modulepreload" href="/js/lib/i18n.js">
+  <link rel="modulepreload" href="/js/lib/media.js">
+  <link rel="modulepreload" href="/js/lib/state.js">
+  <link rel="modulepreload" href="/js/lib/ui.js">
+  <link rel="modulepreload" href="/js/lib/workflow-form.js">
+  <link rel="modulepreload" href="/js/lib/graph.js">
+  <link rel="modulepreload" href="/js/views/login.js">
+  <link rel="modulepreload" href="/js/views/workflows.js">
+  <link rel="modulepreload" href="/js/views/run.js">
+  <link rel="modulepreload" href="/js/views/queue.js">
+  <link rel="modulepreload" href="/js/views/gallery.js">
+  <link rel="modulepreload" href="/js/views/more.js">
+  <link rel="modulepreload" href="/js/views/node-editor.js">
+  <link rel="modulepreload" href="/js/views/settings.js">
+  <link rel="modulepreload" href="/js/views/templates.js">
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
