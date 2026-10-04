@@ -112,7 +112,7 @@ node server/src/index.js --port=8899 --upstream=http://127.0.0.1:8188 --token=<�
 ## 开发与测试
 
 ```sh
-npm test                 # 单元 + 集成测试（内置模拟 ComfyUI，172 个用例，离线可跑）
+npm test                 # 单元 + 集成测试（内置模拟 ComfyUI，173 个用例，离线可跑）
 npm run mock             # 单独启动模拟 ComfyUI（默认 :8189，配合联调）
 node scripts/gen-icons.js  # 重新生成应用图标
 ```
@@ -246,7 +246,7 @@ Both only run `scripts/autostart-check.js`: it exits immediately when the gatewa
 ## Development & Testing
 
 ```sh
-npm test                 # unit + integration tests (built-in mock ComfyUI, 172 cases, runs offline)
+npm test                 # unit + integration tests (built-in mock ComfyUI, 173 cases, runs offline)
 npm run mock             # start the mock ComfyUI alone (default :8189, for joint debugging)
 node scripts/gen-icons.js  # regenerate the app icons
 ```

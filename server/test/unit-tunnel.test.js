@@ -41,6 +41,20 @@ test('resolveCloudflared 找不到时返回 null', async () => {
   assert.equal(found, null);
 });
 
+test('resolveCloudflared 不受进程当前目录干扰（where 不再搜 cwd）', async () => {
+  const cwdDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-cwd-'));
+  fs.writeFileSync(path.join(cwdDir, process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'), '');
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-empty2-'));
+  const prevCwd = process.cwd();
+  process.chdir(cwdDir);
+  try {
+    const found = await resolveCloudflared({ cloudflared: path.join(empty, 'missing.exe') }, empty);
+    assert.equal(found, null);
+  } finally {
+    process.chdir(prevCwd);
+  }
+});
+
 test('tunnel 配置接受 CLI 布尔字符串（true 等价 quick）', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cm-cfg-')), 'config.json');
   assert.equal(loadConfig({ configFile: file, overrides: { tunnel: 'true' } }).tunnel, 'quick');

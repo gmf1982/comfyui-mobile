@@ -4,6 +4,7 @@
  */
 import { spawn, execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 /** 从 cloudflared 输出中解析 trycloudflare 公网地址。 */
@@ -15,7 +16,10 @@ export function parseTunnelUrl(text) {
 function whichSync(cmd) {
   return new Promise((resolve) => {
     const finder = process.platform === 'win32' ? 'where' : 'which';
-    execFile(finder, [cmd], (err, stdout) => {
+    // Windows 的 where 会先搜子进程当前目录；网关常以项目根为 cwd，而 README 推荐
+    // 把 cloudflared.exe 放在项目根——cwd 命中会抢在「PATH → 常见安装位置 → 项目根」
+    // 的声明顺序之前。钉到临时目录，让 where 只看 PATH（POSIX 的 which 本就不搜 cwd）。
+    execFile(finder, [cmd], { cwd: os.tmpdir() }, (err, stdout) => {
       if (err) return resolve(null);
       const first = String(stdout).split(/\r?\n/)[0]?.trim();
       resolve(first || null);
