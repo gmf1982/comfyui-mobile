@@ -6,7 +6,7 @@
 ![Node.js](https://img.shields.io/badge/node.js-%E2%89%A5%2020-brightgreen)
 ![PWA](https://img.shields.io/badge/PWA-ready-8A2BE2)
 
-把电脑上的 **ComfyUI** 装进手机浏览器：电脑运行一个轻量**安全网关**，手机打开网页就是一个为竖屏重新设计的完整操作界面——工作流管理、参数表单、实时进度、图库、队列、节点图、模型浏览，并支持「添加到主屏幕」安装为 PWA。
+在手机上轻松使用**电脑里的 ComfyUI**：电脑上运行一个轻量**安全网关**，手机打开网页即可操作，手机上什么都不用装。无论是窝在沙发上还是出门在外，都能随时出图：工作流自动推导成大按钮参数表单，**抛开桌面端眼花缭乱的节点连线**，改改提示词、点一下「生成」就好；工作流管理、实时进度、图库、队列、节点图一应俱全，还能「添加到主屏幕」当 App 使用（PWA）。
 
 ## ✨ 功能特色
 
@@ -182,7 +182,7 @@ docs/     开发文档
 
 [中文](#comfyui-mobile) | **English**
 
-Put the **ComfyUI** on your desktop into your phone's browser: the PC runs a lightweight **secure gateway**, and the phone gets a full UI redesigned for portrait screens — workflow management, parameter forms, live progress, gallery, queue, node graph, and model browser. Installable as a PWA via "Add to Home Screen".
+**Use the ComfyUI on your PC from your phone, effortlessly**: the PC runs a lightweight **secure gateway** and the phone just opens a web page — nothing to install on the phone. On the couch or away from the desk, generate images anytime: each workflow is automatically turned into a large-button parameter form, **no intimidating node wiring needed** — tweak the prompt, tap "Generate", done. Workflow management, live progress, gallery, queue and a node graph are all on board, installable as a PWA via "Add to Home Screen".
 
 ## ✨ Features
 
