@@ -49,7 +49,7 @@ export async function comfyStatus(cfg) {
 }
 
 /**
- * 拉起 ComfyUI（命令取自 cfg.comfyuiLaunch，经 shell 启动以支持 .bat 与含空格的带引号路径）。
+ * 拉起 ComfyUI（命令取自 cfg.comfyuiLaunch：可执行文件直接拉起，.bat/.cmd 经 shell）。
  * @param {object} cfg 网关配置
  * @param {{ logsDir: string }} io 日志目录：ComfyUI 的 stdout/stderr 追加写入 logsDir/comfyui.log
  * @returns {Promise<{ok: boolean, status?: string, pid?: number, code?: number, error?: string, message?: string}>}
@@ -67,13 +67,24 @@ export async function startComfyUI(cfg, { logsDir }) {
 
   fs.mkdirSync(logsDir, { recursive: true });
   const out = fs.openSync(path.join(logsDir, 'comfyui.log'), 'a');
-  const proc = spawn(cfg.comfyuiLaunch.trim(), {
-    shell: true, // 启动命令来自本机配置（与网关代码同信任级），shell 才能跑 .bat 与带引号路径
-    cwd: resolveCwd(cfg),
-    detached: true, // ComfyUI 独立于网关生命周期：网关重启不影响已拉起的 ComfyUI
-    windowsHide: true,
-    stdio: ['ignore', out, out],
-  });
+  // Windows 上 spawn 的 shell:true 与 detached:true 组合会让子进程拿不到任何输出句柄
+  // （stdio 管道和命令内 `>>` 重定向都实测整段丢失），两者只能取其一：
+  // - 可执行文件（python.exe 等）：去 shell 直接拉起，保留 detached（网关重启不影响 ComfyUI）；
+  // - .bat/.cmd 包装脚本：必须经 shell，放弃 detached（ComfyUI 随网关进程树一起结束）。
+  const { exe, args, isScript } = parseLaunch(cfg.comfyuiLaunch);
+  const proc = isScript
+    ? spawn(cfg.comfyuiLaunch.trim(), {
+        shell: true, // 启动命令来自本机配置（与网关代码同信任级），shell 才能跑 .bat 与带引号路径
+        cwd: resolveCwd(cfg),
+        windowsHide: true,
+        stdio: ['ignore', out, out],
+      })
+    : spawn(exe, args, {
+        cwd: resolveCwd(cfg),
+        detached: true, // ComfyUI 独立于网关生命周期：网关重启不影响已拉起的 ComfyUI
+        windowsHide: true,
+        stdio: ['ignore', out, out],
+      });
   child = proc;
   const releaseFd = () => { try { fs.closeSync(out); } catch { /* 已关闭 */ } };
   proc.once('spawn', releaseFd);
@@ -199,6 +210,29 @@ function resolveCwd(cfg) {
 function firstToken(launch) {
   const match = /^\s*"?([^"\s]+)"?/.exec(launch);
   return match ? match[1] : '';
+}
+
+/**
+ * 拆解 comfyuiLaunch 为可执行文件与参数（按双引号分词；Windows 路径反斜杠按字面处理，无转义）。
+ * isScript 标记 .bat/.cmd —— 这类只能经 shell 启动（详见 startComfyUI 内注释）。
+ */
+export function parseLaunch(launch) {
+  const tokens = [];
+  let cur = '';
+  let inQuote = false;
+  let started = false;
+  for (const ch of String(launch ?? '').trim()) {
+    if (ch === '"') { inQuote = !inQuote; started = true; continue; }
+    if (!inQuote && /\s/.test(ch)) {
+      if (started) { tokens.push(cur); cur = ''; started = false; }
+      continue;
+    }
+    cur += ch;
+    started = true;
+  }
+  if (started) tokens.push(cur);
+  const exe = tokens[0] ?? '';
+  return { exe, args: tokens.slice(1), isScript: /\.(bat|cmd)$/i.test(exe) };
 }
 
 function appendLog(logsDir, line) {
