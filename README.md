@@ -65,7 +65,7 @@ node server/src/index.js --tunnel=funnel
 
 不用 Tailscale？cloudflared 快速隧道免账号即开即用：`--tunnel=quick`。全部方式见下方「手机连接」。
 
-> Windows 也可以直接双击 `启动.bat`。
+> Windows 也可以直接双击 `run.bat`。
 
 **3️⃣ 手机连接**
 
@@ -151,7 +151,7 @@ node server/src/index.js --port=8899 --upstream=http://127.0.0.1:8188 --token=<�
 用 `--tunnel=funnel`（公网永久）或 `--tunnel=serve`（tailnet 永久）地址就不变。但注意：地址永久 ≠ 服务永久——网关和 ComfyUI 得在电脑上运行着，关机后访问会看到错误页，重新启动即恢复。
 
 **支持 Linux / macOS 吗？**
-网关是纯 Node.js、手机端是纯网页，本身不挑平台；Linux / macOS 用 `start.sh` 启动即可。不过文档、`启动.bat` 和开机自启脚本以 **Windows 实测**为准，其他平台的开机自启需自行配置。
+网关是纯 Node.js、手机端是纯网页，本身不挑平台；Linux / macOS 用 `start.sh` 启动即可。不过文档、`run.bat` 和开机自启脚本以 **Windows 实测**为准，其他平台的开机自启需自行配置。
 
 **暴露到公网安全吗？**
 见「安全设计」。最稳妥的路径是不暴露公网的 Tailscale Serve；若使用公网隧道，建议保持默认令牌强度并开启限流。
@@ -241,7 +241,7 @@ node server/src/index.js --tunnel=funnel
 
 No Tailscale? The cloudflared quick tunnel works with no account at all: `--tunnel=quick`. All options are listed under "Connect your phone".
 
-> On Windows you can simply double-click `启动.bat`.
+> On Windows you can simply double-click `run.bat`.
 
 **3️⃣ Connect your phone**
 
@@ -327,7 +327,7 @@ No — any modern browser works. "Add to Home Screen" makes it feel like an app.
 With `--tunnel=funnel` (public, permanent) or `--tunnel=serve` (tailnet, permanent) it stays the same. But a permanent address ≠ a permanent service: the gateway and ComfyUI must be running on the PC; when they are off you will see an error page, and it recovers once you start them again.
 
 **Does Linux / macOS work?**
-The gateway is pure Node.js and the phone side is a plain web app, so nothing is platform-bound; on Linux / macOS start it with `start.sh`. That said, the docs, `启动.bat` and the autostart scripts are written and tested for **Windows**; autostart on other platforms needs your own configuration (systemd / launchd).
+The gateway is pure Node.js and the phone side is a plain web app, so nothing is platform-bound; on Linux / macOS start it with `start.sh`. That said, the docs, `run.bat` and the autostart scripts are written and tested for **Windows**; autostart on other platforms needs your own configuration (systemd / launchd).
 
 **Is it safe to expose to the public internet?**
 See "Security". The safest path is Tailscale Serve, which never exposes a public endpoint; if you do use a public tunnel, keep the default token strength and rate limiting on.
