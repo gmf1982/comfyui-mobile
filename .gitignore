@@ -26,3 +26,8 @@ gateway.log
 # 本机自测工作区与 ZCode 工具配置（不入库）
 .selftest/
 .zcodeignore
+
+# 内部开发记录与测试产物（不入库）
+docs/HANDOVER.md
+docs/REVIEW.md
+gui-test-screenshots/

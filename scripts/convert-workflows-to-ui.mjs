@@ -14,15 +14,14 @@
  *                的不动点短路），回灌自己的 1MP 输出时逐像素重编码，高频噪声逐轮
  *                累积（斑点/过锐/高对比）；预缩放到 2MP 保证每轮必经 lanczos 重采样。
  *
- * 用法：node scripts/convert-workflows-to-ui.mjs <convert|patch-qwen21> [workflowsDir]
- *       默认目录 <工作流目录>；object_info 取自 127.0.0.1:8188。
+ * 用法：node scripts/convert-workflows-to-ui.mjs <convert|patch-qwen21> <workflowsDir>
+ *       工作流目录为必填参数；object_info 取自 127.0.0.1:8188。
  */
 import { readFile, writeFile, mkdir, readdir, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apiToUi } from '../web/js/lib/graph.js';
 import { convertUiToApi, detectFormat, listApiNodes } from '../web/js/lib/workflow-form.js';
 
-const DEFAULT_DIR = '<工作流目录>';
 const OBJINFO_URL = process.env.COMFYUI_OBJINFO_URL ?? 'http://127.0.0.1:8188/object_info';
 
 const norm = (x) => {
@@ -208,7 +207,11 @@ async function cmdPatchQwen21(dir) {
 }
 
 const [cmd, dirArg] = process.argv.slice(2);
-const dir = dirArg ?? DEFAULT_DIR;
+if (!cmd || !dirArg) {
+  console.error('用法：node scripts/convert-workflows-to-ui.mjs <convert|patch-qwen21> <workflowsDir>');
+  process.exit(1);
+}
+const dir = dirArg;
 
 if (cmd === 'patch-qwen21') {
   await cmdPatchQwen21(dir);
