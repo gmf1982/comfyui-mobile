@@ -84,11 +84,10 @@ body { min-height: 100dvh; }
 }
 .bottomnav button {
   flex: 1; border: none; background: none; color: var(--muted);
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  font-size: 11px; padding: 8px 0 6px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px 0;
 }
-.bottomnav button .nav-ico { font-size: 20px; filter: grayscale(1) opacity(0.7); }
-.bottomnav button.active { color: var(--primary); font-weight: 600; }
+.bottomnav button .nav-ico { width: 34px; height: 34px; display: block; filter: grayscale(1) opacity(0.6); transition: filter 0.15s; }
 .bottomnav button.active .nav-ico { filter: none; }
 
 /* ---------- 卡片与表单 ---------- */
@@ -228,6 +227,8 @@ html[data-theme="light"] .toast { background: #333c52; }
   background: var(--bg-input); color: var(--muted); border: 1px solid var(--border);
 }
 .badge.err { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.badge-local { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.badge-cloud { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--border)); }
 .error-card { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
 .error-card pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; color: var(--danger); margin: 6px 0 0; }
 

@@ -9,10 +9,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ComfyUI">
+  <meta name="apple-mobile-web-app-title" content="ComfyUI Mobile">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" href="/icons/app-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/app-192.png">
   <title>ComfyUI Mobile</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -20,18 +20,16 @@
   <header id="topbar" class="topbar hidden">
     <span id="conn-dot" class="dot off" title="连接状态"></span>
     <span id="topbar-title" class="topbar-title">ComfyUI</span>
-    <span id="topbar-info" class="topbar-info muted"></span>
-    <button id="btn-interrupt" class="icon-btn" title="中断当前任务">⏹</button>
   </header>
 
   <main id="view" class="view"></main>
 
   <nav id="bottomnav" class="bottomnav hidden">
-    <button data-nav="workflows"><span class="nav-ico">🗂</span><span data-i18n="工作流">工作流</span></button>
-    <button data-nav="run"><span class="nav-ico">▶️</span><span data-i18n="运行">运行</span></button>
-    <button data-nav="gallery"><span class="nav-ico">🖼️</span><span data-i18n="图库">图库</span></button>
-    <button data-nav="queue"><span class="nav-ico">⏳</span><span data-i18n="队列">队列</span></button>
-    <button data-nav="more"><span class="nav-ico">⋯</span><span data-i18n="更多">更多</span></button>
+    <button data-nav="workflows" aria-label="工作流"><img class="nav-ico" src="/icons/tab-workflows.png" alt=""></button>
+    <button data-nav="run" aria-label="运行"><img class="nav-ico" src="/icons/tab-run.png" alt=""></button>
+    <button data-nav="gallery" aria-label="图库"><img class="nav-ico" src="/icons/tab-gallery.png" alt=""></button>
+    <button data-nav="queue" aria-label="队列"><img class="nav-ico" src="/icons/tab-queue.png" alt=""></button>
+    <button data-nav="more" aria-label="更多"><img class="nav-ico" src="/icons/tab-more.png" alt=""></button>
   </nav>
 
   <div id="overlay" class="overlay hidden"></div>

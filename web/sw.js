@@ -6,8 +6,13 @@
  * v23：底部抽屉加顶部下拉手柄（点按/下拖关闭，sticky 常驻）。
  * v24：设置页服务器卡新增 ComfyUI 远程启动（/gw/comfyui/status + /start，网关配置 comfyuiLaunch 后出现）。
  * v25：按钮常驻——运行中显示「重启 ComfyUI」（/gw/comfyui/restart，杀 upstream 端口进程树后重新拉起），启动/重启均需二次确认。
+ * v26：模板库官方模板区分本地/云端 API（筛选按钮 + 卡片徽标 + 打开云端模板积分提醒）。
+ * v27：底部导航与应用图标替换为设计稿图片（icons/tab-*.png、icon-192/512.png），favicon 改用 PNG，icon.svg 移除。
+ * v28：顶栏移除 GPU 信息与中断按钮；底部导航纯图标（未选中置灰、选中显色）；桌面图标改名 app-*.png 击穿缓存，显示名统一 ComfyUI Mobile。
+ * v29：桌面图标按原图仅缩放重生成（不裁剪），manifest 移除 maskable 声明，避免安卓启动器放大裁切丢底板边框。
+ * v30：桌面图标改用 994x994 一比一原图直接缩放（无透明补边，消除启动器衬出的白边）。
  */
-const CACHE = 'cm-shell-v25';
+const CACHE = 'cm-shell-v31';
 const SHELL = [
   '/',
   '/index.html',
@@ -31,9 +36,13 @@ const SHELL = [
   '/js/views/settings.js',
   '/js/views/templates.js',
   '/manifest.webmanifest',
-  '/icons/icon.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  '/icons/app-192.png',
+  '/icons/app-512.png',
+  '/icons/tab-workflows.png',
+  '/icons/tab-run.png',
+  '/icons/tab-gallery.png',
+  '/icons/tab-queue.png',
+  '/icons/tab-more.png',
 ];
 
 self.addEventListener('install', (event) => {

@@ -93,7 +93,7 @@ bottomnav.addEventListener('click', (ev) => {
 });
 
 // 顶栏：中断按钮 + 连接状态 + 队列数
-document.getElementById('btn-interrupt').addEventListener('click', async () => {
+document.getElementById('btn-interrupt')?.addEventListener('click', async () => {
   try {
     await apiJson('/interrupt', { method: 'POST' });
     toast(t('已发送中断请求'));
@@ -109,7 +109,8 @@ function updateTopbarInfo() {
   const parts = [];
   if (queueRemaining != null && queueRemaining > 0) parts.push(tf('队列 {n}', { n: queueRemaining }));
   if (gpuLabel) parts.push(gpuLabel);
-  document.getElementById('topbar-info').textContent = parts.join(' · ');
+  const info = document.getElementById('topbar-info');
+  if (info) info.textContent = parts.join(' · ');
 }
 
 bus.addEventListener('cm:ws-state', (ev) => {

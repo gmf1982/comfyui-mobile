@@ -5,7 +5,7 @@ import { el, clear, toast, confirmDialog } from '../lib/ui.js';
 import { viewUrl, thumbUrl, downloadMedia } from '../lib/media.js';
 import { openMediaOverlay, sendToImageInput } from '../lib/media-actions.js';
 import { extractMediaFromOutputs } from '../lib/workflow-form.js';
-import { state, runStats, noteProgress } from '../lib/state.js';
+import { state, runStats, noteProgress, lastSubmittedId } from '../lib/state.js';
 import { t, tf } from '../lib/i18n.js';
 
 const progress = new Map(); // prompt_id → {pct, node}
@@ -78,11 +78,13 @@ export async function queueView(container) {
     // 新一轮生成开始（或仍在生成）时恢复预览区；结果卡片保留在下方
     previewCard.style.display = '';
   }
+  let alive = true; // 视图销毁后停掉 loadResult 的重试，避免写过期的 DOM
   bus.addEventListener('cm:ws', onWs);
   bus.addEventListener('cm:preview', onPreview);
   const timer = setInterval(refresh, 3000);
   const statsTimer = setInterval(pollVram, 3000);
   state.cleanup = () => {
+    alive = false;
     bus.removeEventListener('cm:ws', onWs);
     bus.removeEventListener('cm:preview', onPreview);
     clearInterval(timer);
@@ -124,14 +126,19 @@ export async function queueView(container) {
     statsLine.style.display = parts.length ? '' : 'none';
   }
 
-  /** 取回本次生成的结果并在队列页内渲染（缩略图用 WebP，点开才载原图）。 */
-  async function loadResult(promptId) {
+  /** 取回本次生成的结果并在队列页内渲染（缩略图用 WebP，点开才载原图）。
+   *  quiet：对账时静默（不弹“生成完成”）；attempt：history 落盘竞态的重试计数。 */
+  async function loadResult(promptId, { quiet = false, attempt = 0 } = {}) {
     if (!promptId) return;
     try {
       const h = await apiJson(`/history/${encodeURIComponent(promptId)}`);
       const entry = h?.[promptId];
       const items = extractMediaFromOutputs(entry?.outputs ?? {}, { compare: true, version: entry?.prompt?.[0] ?? null });
-      if (!items.length) return;
+      if (!items.length) {
+        // history 落盘略晚于 execution_success 时会拉到空：稍后重试，避免本次结果丢失
+        if (alive && attempt < 3) setTimeout(() => loadResult(promptId, { quiet, attempt: attempt + 1 }), 1500);
+        return;
+      }
       const msgs = entry?.status?.messages ?? [];
       const st = msgs.find((m) => m[0] === 'execution_start')?.[1]?.timestamp;
       const su = msgs.find((m) => m[0] === 'execution_success')?.[1]?.timestamp;
@@ -139,10 +146,20 @@ export async function queueView(container) {
       const durationMs = st && su ? su - st : (runStats.startedAt ? Date.now() - runStats.startedAt : null);
       lastResult = { promptId, items, durationMs, promptJson: entry?.prompt?.[2] ?? null };
       renderResult();
-      toast(t('生成完成，结果见上方'));
+      if (!quiet) toast(t('生成完成，结果见上方'));
     } catch {
       // 结果拉取失败不阻塞队列页
     }
+  }
+
+  /**
+   * 切页/刷新期间会错过 execution_success 推送（视图监听器已解绑，WS 是全局的），
+   * 而结果卡是纯事件驱动 + 模块级缓存——切回后只会显示上一次的结果。
+   * 进入本页时按最近一次提交的 prompt_id 对账一次 /history 补上。
+   */
+  function reconcileResult() {
+    const pid = lastSubmittedId() ?? currentPromptId;
+    if (pid && lastResult?.promptId !== pid) loadResult(pid, { quiet: true });
   }
 
   /** 把毫秒格式化为「用时 X」，极短（缓存命中）时额外标注。 */
@@ -412,4 +429,5 @@ export async function queueView(container) {
   renderResult();
   await refresh();
   pollVram();
+  reconcileResult();
 }

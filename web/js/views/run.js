@@ -1,10 +1,10 @@
 /** 快速运行视图：表单模式（主参数 + 高级参数 + JSON 兜底），提交 /prompt。 */
-import { apiJson, ensureSchemas, CLIENT_ID } from '../lib/api.js';
+import { api, apiJson, ensureSchemas, CLIENT_ID } from '../lib/api.js';
 import { el, clear, toast, confirmDialog, promptDialog, fieldEditor } from '../lib/ui.js';
 import { buildFormModel, applyFormModel, detectFormat, listApiNodes, schemaInputDef, comboOptions, buildRunLayout, heroRowTitle, fillSocketlessInputs } from '../lib/workflow-form.js';
 import { t, tf } from '../lib/i18n.js';
-import { state, setWorkflow, resetRunStats, markPendingRun, isFavorite, toggleFavorite, saveSettings, loadLayoutUnits, saveLayoutUnits, openWorkflows, addOpenWorkflow, removeOpenWorkflow, loadWorkflowParams, saveWorkflowParam, clearWorkflowParams, migrateWorkflowParams } from '../lib/state.js';
-import { loadWorkflowFromPath } from './workflows.js';
+import { state, setWorkflow, resetRunStats, markPendingRun, markLastSubmitted, isFavorite, toggleFavorite, saveSettings, loadLayoutUnits, saveLayoutUnits, openWorkflows, addOpenWorkflow, removeOpenWorkflow, loadWorkflowParams, saveWorkflowParam, clearWorkflowParams, migrateWorkflowParams } from '../lib/state.js';
+import { loadWorkflowFromPath, encodeUserdataPath } from './workflows.js';
 import { apiToUi } from '../lib/graph.js';
 
 let cachedSchemas = {};
@@ -44,8 +44,24 @@ export async function runView(container) {
     const p = wfSelect.value;
     if (!p) return;
     toast(t('正在切换…'));
-    const ok = await loadWorkflowFromPath(p, { navigate: false });
-    if (!ok) { wfSelect.value = wfState.path ?? ''; return; }
+    const ok = await loadWorkflowFromPath(p, { navigate: false, silent: true });
+    if (!ok) {
+      // 区分“文件已删除”与“文件损坏/转换失败”：只有确认磁盘上不存在才从多开列表移除，
+      // 否则死条目永远无法变成当前项、✕ 也删不掉它
+      let gone = false;
+      try {
+        gone = (await api(`/userdata/${encodeUserdataPath(p)}`)).status === 404;
+      } catch { /* 网络错误不当作不存在 */ }
+      if (gone) {
+        removeOpenWorkflow(p);
+        toast(t('该工作流文件已不存在，已从列表移除'));
+        rerenderRun();
+      } else {
+        toast(t('切换失败'));
+        wfSelect.value = wfState.path ?? '';
+      }
+      return;
+    }
     rerenderRun();
   });
   const closeBtn = el('button', {
@@ -54,7 +70,6 @@ export async function runView(container) {
       if (!wfState.path) { toast(t('该工作流尚未保存，无打开列表可关闭')); return; }
       removeOpenWorkflow(wfState.path);
       clearWorkflowParams(wfState); // 关闭即丢弃该工作流未保存的表单参数
-      removeOpenWorkflow(wfState.path);
       const rest = openWorkflows();
       if (rest[0]) await loadWorkflowFromPath(rest[0].path, { navigate: false });
       else setWorkflow(null);
@@ -401,6 +416,7 @@ export async function runView(container) {
       if (!showNodeErrors(res?.node_errors ?? {})) {
         resetRunStats();
         markPendingRun();
+        if (res?.prompt_id) markLastSubmitted(res.prompt_id); // 队列页切回后靠它对账本次结果
         toast(tf('已加入队列（#{n}）', { n: res?.number ?? '?' }));
         location.hash = '/queue';
       }

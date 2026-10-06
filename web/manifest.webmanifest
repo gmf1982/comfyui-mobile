@@ -1,6 +1,6 @@
 {
   "name": "ComfyUI Mobile",
-  "short_name": "ComfyUI",
+  "short_name": "ComfyUI Mobile",
   "description": "手机远程控制电脑 ComfyUI 生图/生视频/生音频",
   "start_url": "/",
   "scope": "/",
@@ -9,8 +9,7 @@
   "background_color": "#10131a",
   "theme_color": "#10131a",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

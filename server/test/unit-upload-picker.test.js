@@ -66,7 +66,8 @@ test('图库删除为批量模式：就地标记、不自动刷新', () => {
 
 test('队列页就地预览结果（不跳图库）且无自动跳转', () => {
   const q = fs.readFileSync('web/js/views/queue.js', 'utf8');
-  assert.match(q, /async function loadResult\(promptId\)/, '应拉取本次结果');
+  assert.match(q, /async function loadResult\(promptId/, '应拉取本次结果');
+  assert.match(q, /reconcileResult\(\)/, '切回本页时应对账最近提交的结果');
   assert.match(q, /function renderResult\(\)/, '应就地渲染结果');
   assert.match(q, /thumbUrl\(item, 80, 1024\)/, '结果图片用 1024px 缩略图（点开大图才拉原图）');
   assert.match(q, /viewUrl\(item\), controls/, '视频/音频仍加载原文件');
@@ -162,4 +163,11 @@ test('生成结果始终显示用时（含缓存命中与客户端回退）', ()
   assert.match(q, /st && su \? su - st : \(runStats\.startedAt \? Date\.now\(\) - runStats\.startedAt : null\)/, '时间戳缺失时回退客户端计时');
   assert.doesNotMatch(q, /durationMs = st && su && su - st > 900 \? su - st : null/, '不应再过滤短耗时');
   assert.match(q, /item\.filename \+ \(lastResult\.durationMs != null \? ' · ' \+ formatDuration/, '每张结果也带用时');
+});
+
+test('「用作图片输入」写入表单缓存，避免 run 页用旧缓存覆盖选中的图', () => {
+  const src = fs.readFileSync('web/js/lib/media-actions.js', 'utf8');
+  assert.match(src, /import \{[^}]*saveWorkflowParam[^}]*\} from '\.\/state\.js'/, '应从 state.js 导入 saveWorkflowParam');
+  const seg = src.slice(src.indexOf('function pickTargetSheet'), src.indexOf('async function sendToImageInput'));
+  assert.match(seg, /saveWorkflowParam\(wfState, f\.key, uploadedName\)/, '选定目标输入位后应同步写入表单缓存');
 });

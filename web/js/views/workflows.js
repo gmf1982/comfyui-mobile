@@ -2,7 +2,7 @@
 import { api, apiJson, ensureSchemas } from '../lib/api.js';
 import { el, clear, toast, showSheet, hideSheet, confirmDialog, promptDialog } from '../lib/ui.js';
 import { detectFormat, convertUiToApi, starterWorkflow, listApiNodes } from '../lib/workflow-form.js';
-import { setWorkflow, addOpenWorkflow, favorites, isFavorite, toggleFavorite } from '../lib/state.js';
+import { setWorkflow, addOpenWorkflow, openWorkflows, removeOpenWorkflow, favorites, isFavorite, toggleFavorite } from '../lib/state.js';
 import { downloadText } from '../lib/media.js';
 import { apiToUi } from '../lib/graph.js';
 import { t } from '../lib/i18n.js';
@@ -13,7 +13,7 @@ function basename(path) {
 
 // ComfyUI 的 /userdata/{path} 路由将整段路径按单参数匹配：
 // 斜杠必须整体编码为 %2F（与官方前端一致），路径需带 workflows/ 前缀。
-function encodeUserdataPath(path) {
+export function encodeUserdataPath(path) {
   return encodeURIComponent(`workflows/${path}`);
 }
 
@@ -163,10 +163,16 @@ export async function workflowsView(container) {
         if (!newName || newName === name) return;
         try {
           const res = await api(`/userdata/${encodeUserdataPath(path)}`);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
           const content = await res.text();
           const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
           await apiJson(`/userdata/${encodeURIComponent(`workflows/${dir + newName}`)}?overwrite=true`, { method: 'POST', body: content });
-          await api(`/userdata/${encodeUserdataPath(path)}`, { method: 'DELETE' });
+          const del = await api(`/userdata/${encodeUserdataPath(path)}`, { method: 'DELETE' });
+          if (!del.ok) throw new Error('HTTP ' + del.status);
+          // 多开列表同步改名，否则旧路径变死条目（运行页切换时才被动清理）
+          const wasOpen = openWorkflows().some((e) => e.path === path);
+          removeOpenWorkflow(path);
+          if (wasOpen) addOpenWorkflow({ path: dir + newName, name: newName });
           toast(t('已重命名'));
         } catch (err) {
           toast(t('重命名失败：') + err.message);
@@ -177,7 +183,9 @@ export async function workflowsView(container) {
         hideSheet();
         if (!(await confirmDialog(t('确定删除') + name + t('？该操作不可恢复。')))) return;
         try {
-          await api(`/userdata/${encodeUserdataPath(path)}`, { method: 'DELETE' });
+          const res = await api(`/userdata/${encodeUserdataPath(path)}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          removeOpenWorkflow(path); // 运行页多开列表同步清理，避免残留死条目
           toast(t('已删除'));
         } catch (err) {
           toast(t('删除失败：') + err.message);

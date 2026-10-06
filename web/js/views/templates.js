@@ -44,14 +44,16 @@ export async function openWorkflowFromText(text, name) {
 export async function templatesView(container) {
   const modeChips = el('div', { class: 'chips' });
   const searchWrap = el('div', { class: 'field' });
+  const typeChips = el('div', { class: 'chips' });
   const chips = el('div', { class: 'chips' });
   const list = el('div', {});
   let mode = 'official';
   let officialIndex = null;
   let nodeTemplates = null;
-  let officialCategory = null;
+  let officialModule = null; // 索引里 category 只有 Foundation/Applied 两种，唯一的是 title，因此按模块对象匹配
   let nodePack = null;
   let query = '';
+  let typeFilter = 'all';
 
   const searchInput = el('input', { type: 'text', placeholder: t('🔍 搜索模板（名称/描述/分类）…') });
   searchInput.addEventListener('input', () => {
@@ -66,9 +68,22 @@ export async function templatesView(container) {
     ),
     modeChips,
     searchWrap,
+    typeChips,
     chips,
     list,
   );
+
+  for (const [key, label] of [['all', '全部'], ['local', '本地'], ['cloud', '云端 API']]) {
+    typeChips.append(el('button', {
+      class: 'chip' + (key === 'all' ? ' active' : ''),
+      text: t(label),
+      onclick: (ev) => {
+        typeFilter = key;
+        for (const c of typeChips.children) c.classList.toggle('active', c === ev.currentTarget);
+        renderList();
+      },
+    }));
+  }
 
   modeChips.append(
     el('button', { class: 'chip active', text: t('官方模板'), onclick: () => switchMode('official') }),
@@ -98,13 +113,13 @@ export async function templatesView(container) {
       if (mode === 'official') {
         await loadOfficial();
         clear(chips);
-        if (officialCategory == null) officialCategory = officialIndex?.[0]?.category;
+        if (officialModule == null) officialModule = officialIndex?.[0];
         for (const mod of officialIndex ?? []) {
           chips.append(el('button', {
-            class: 'chip' + (mod.category === officialCategory ? ' active' : ''),
+            class: 'chip' + (mod === officialModule ? ' active' : ''),
             text: tf('{name}（{n}）', { name: mod.title ?? mod.category, n: (mod.templates ?? []).length }),
             onclick: (ev) => {
-              officialCategory = mod.category;
+              officialModule = mod;
               for (const c of chips.children) c.classList.toggle('active', c === ev.currentTarget);
               renderList();
             },
@@ -131,10 +146,33 @@ export async function templatesView(container) {
     }
   }
 
+  /** 合作伙伴（云端 API）模板判据：官方索引的 openSource=false、含 API 标签或 api_ 前缀命名（与 comfy-cli 的 API 标记口径一致）。 */
+  function isCloudTemplate(tpl) {
+    return tpl.openSource === false
+      || (tpl.tags ?? []).some((tag) => tag.toLowerCase() === 'api')
+      || /^api[-_]/.test(tpl.name ?? '');
+  }
+
+  function matchesType(tpl) {
+    if (typeFilter === 'all') return true;
+    return typeFilter === 'cloud' ? isCloudTemplate(tpl) : !isCloudTemplate(tpl);
+  }
+
+  function typeBadge(tpl) {
+    const cloud = isCloudTemplate(tpl);
+    return el('span', {
+      class: 'badge ' + (cloud ? 'badge-cloud' : 'badge-local'),
+      text: t(cloud ? '云端 API' : '本地'),
+    });
+  }
+
   function officialCard(mod, tpl) {
     return el('div', { class: 'list-item', style: { alignItems: 'flex-start' } },
       el('div', { class: 'grow' },
-        el('div', { class: 'title', text: tpl.title ?? tpl.name }),
+        el('div', { class: 'row wrap', style: { gap: '6px' } },
+          el('div', { class: 'title', text: tpl.title ?? tpl.name }),
+          typeBadge(tpl),
+        ),
         tpl.description ? el('div', { class: 'muted', style: { marginTop: '4px' }, text: tpl.description.slice(0, 80) }) : null,
         el('div', { class: 'muted', style: { fontSize: '11px' }, text: mod.title ?? mod.category }),
       ),
@@ -154,23 +192,26 @@ export async function templatesView(container) {
 
   function renderSearchResults() {
     let count = 0;
-    // 官方模板全量搜索
+    // 官方模板全量搜索（按本地/云端筛选）
     for (const mod of officialIndex ?? []) {
       for (const tpl of mod.templates ?? []) {
         if (count >= 60) break;
+        if (!matchesType(tpl)) continue;
         const hay = `${tpl.title ?? ''} ${tpl.name ?? ''} ${tpl.description ?? ''}`.toLowerCase();
         if (!hay.includes(query)) continue;
         list.append(officialCard(mod, tpl));
         count++;
       }
     }
-    // 节点示例搜索
-    for (const [pack, titles] of Object.entries(nodeTemplates ?? {})) {
-      for (const title of titles) {
-        if (count >= 60) break;
-        if (`${title} ${pack}`.toLowerCase().includes(query)) {
-          list.append(nodeCard(pack, title));
-          count++;
+    // 节点示例搜索（均为本地工作流，云端筛选下不展示）
+    if (typeFilter !== 'cloud') {
+      for (const [pack, titles] of Object.entries(nodeTemplates ?? {})) {
+        for (const title of titles) {
+          if (count >= 60) break;
+          if (`${title} ${pack}`.toLowerCase().includes(query)) {
+            list.append(nodeCard(pack, title));
+            count++;
+          }
         }
       }
     }
@@ -195,9 +236,14 @@ export async function templatesView(container) {
     clear(list);
     try {
       if (mode === 'official') {
-        const mod = (officialIndex ?? []).find((m) => m.category === officialCategory);
-        for (const tpl of mod?.templates ?? []) list.append(officialCard(mod, tpl));
-        if (!(mod?.templates ?? []).length) list.append(el('div', { class: 'muted', text: t('该分类暂无模板') }));
+        const mod = officialModule && (officialIndex ?? []).includes(officialModule)
+          ? officialModule
+          : (officialIndex ?? [])[0];
+        const shown = (mod?.templates ?? []).filter(matchesType);
+        for (const tpl of shown) list.append(officialCard(mod, tpl));
+        if (!shown.length) list.append(el('div', { class: 'muted', text: t('该分类下没有符合筛选的模板') }));
+      } else if (typeFilter === 'cloud') {
+        list.append(el('div', { class: 'muted', text: t('节点示例均为本地工作流') }));
       } else {
         for (const title of nodeTemplates[nodePack] ?? []) list.append(nodeCard(nodePack, title));
         if (!(nodeTemplates[nodePack] ?? []).length) list.append(el('div', { class: 'muted', text: t('该节点包没有示例') }));
@@ -208,7 +254,9 @@ export async function templatesView(container) {
   }
 
   async function openOfficial(tpl) {
-    toast(t('打开模板：') + (tpl.title ?? tpl.name));
+    const name = tpl.title ?? tpl.name;
+    // toast 为单例覆盖式，云端警示与打开提示合并为一条
+    toast(isCloudTemplate(tpl) ? t('⚠️ 云端 API 模板，运行将消耗 Comfy 账户积分：') + name : t('打开模板：') + name);
     const res = await api(`/templates/${encodeURIComponent(tpl.name)}.json`);
     await openWorkflowFromText(await res.text(), `${tpl.title ?? tpl.name}.json`);
   }

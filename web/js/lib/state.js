@@ -68,6 +68,21 @@ export function clearPendingRun() {
   try { sessionStorage.removeItem(PENDING_KEY); } catch { /* 忽略 */ }
 }
 
+const LAST_SUBMIT_KEY = 'cm_last_submit_id';
+
+/**
+ * 最近一次提交的 prompt_id（完成与否都保留，直到下次提交覆盖）。
+ * 队列页靠它对账 /history：切页/刷新期间错过的 execution_success 推送无法恢复，
+ * 只有提交时的 id 是可靠锚点。
+ */
+export function markLastSubmitted(promptId) {
+  try { sessionStorage.setItem(LAST_SUBMIT_KEY, promptId); } catch { /* 存储不可用时仅本次会话内不对账 */ }
+}
+
+export function lastSubmittedId() {
+  try { return sessionStorage.getItem(LAST_SUBMIT_KEY) || null; } catch { return null; }
+}
+
 export const state = {
   /** 当前打开的工作流：{name, path, json, format, warnings?, sourceFormat?} */
   workflow: null,

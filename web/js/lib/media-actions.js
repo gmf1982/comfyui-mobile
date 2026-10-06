@@ -6,7 +6,7 @@ import { apiJson, uploadMedia, ensureSchemas } from './api.js';
 import { el, toast, showOverlay, hideOverlay, showSheet, hideSheet } from './ui.js';
 import { viewUrl, downloadMedia, shareMedia } from './media.js';
 import { buildFormModel, listApiNodes } from './workflow-form.js';
-import { state, rememberedWorkflow } from './state.js';
+import { state, rememberedWorkflow, saveWorkflowParam } from './state.js';
 import { t, tf } from './i18n.js';
 
 /**
@@ -71,6 +71,8 @@ function pickTargetSheet(wfState, uploadedName, onDone) {
       text: f.label + (f.value ? t('（当前 ') + f.value + t('）') : ''),
       onclick: () => {
         wfState.json[String(f.nodeId)].inputs[f.inputName] = uploadedName;
+        // run 页恢复表单值时缓存优先于 JSON，必须同步写缓存，否则选中的图会被旧缓存覆盖
+        saveWorkflowParam(wfState, f.key, uploadedName);
         hideSheet();
         toast(t('已设为 ') + f.label + '：' + uploadedName);
         location.hash = '/run';
