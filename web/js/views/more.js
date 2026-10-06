@@ -44,6 +44,8 @@ export async function moreView(container) {
   });
 
   // 关于
+  const aboutLink = () => el('div', { class: 'muted' },
+    el('a', { href: 'https://github.com/gmf1982', target: '_blank', rel: 'noopener', text: 'GitHub: @gmf1982' }));
   const aboutCard = el('div', { class: 'card' }, el('h3', { text: t('关于') }), el('div', { class: 'muted', text: t('加载中…') }));
   try {
     const [stats, health] = await Promise.all([
@@ -57,9 +59,10 @@ export async function moreView(container) {
       el('div', { class: 'muted' }, `ComfyUI: ${stats?.system?.comfyui_version ?? t("未知")}`),
       el('div', { class: 'muted' }, `Gateway: ${location.origin}`),
       device ? el('div', { class: 'muted' }, `GPU: ${device.name} (VRAM ${(device.vram_total / 1024 ** 3).toFixed(1)} GB)`) : null,
+      aboutLink(),
     );
   } catch {
-    clear(aboutCard).append(el('h3', { text: t('关于') }), el('div', { class: 'muted', text: t('无法读取服务器信息') }));
+    clear(aboutCard).append(el('h3', { text: t('关于') }), el('div', { class: 'muted', text: t('无法读取服务器信息') }), aboutLink());
   }
 
   container.append(
