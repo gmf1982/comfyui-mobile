@@ -247,6 +247,19 @@ const EN = {
   '查看当前工作流结构、点按节点修改参数。': 'View the workflow graph and edit node parameters.',
   '模型浏览': 'Models',
   '收藏': 'Favorite', '取消收藏': 'Unfavorite',
+  // 显存清理（更多页）
+  '显存清理': 'VRAM cleanup',
+  '长时间使用后显存可能被历史模型占满，清理后不影响已生成的图片。': 'After long sessions VRAM may stay occupied by previously loaded models; clearing it does not affect images you already generated.',
+  '显存占用 ': 'VRAM in use ',
+  '清理显存 / 内存': 'Free VRAM / RAM',
+  '卸载已加载的模型并释放内存？下次生成需重新加载模型。': 'Unload loaded models and free memory? Models will need to reload on the next generation.',
+  '已清理': 'Memory freed',
+  '清理失败：': 'Free failed: ',
+  '无法读取显存信息': 'Failed to read VRAM info',
+  '未知': 'unknown',
+  // 运行页
+  '切换失败': 'Failed to switch',
+  '该工作流文件已不存在，已从列表移除': 'That workflow file no longer exists and was removed from the list',
   // 运行页模板文案
   '（未保存）': ' (unsaved)',
   ' · 由 UI 格式转换': ' · converted from UI format',
