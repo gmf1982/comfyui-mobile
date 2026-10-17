@@ -207,7 +207,7 @@ function watchPendingRun() {
 }
 watchPendingRun();
 
-// 云端偏好同步：收藏/设置/多开列表跨域名（Tailscale 与 cloudflared 是不同 origin）共享
+// 云端偏好同步：收藏/设置/多开列表跨域名（Tailscale 与局域网地址是不同 origin）共享
 (async () => {
   if (!getToken()) return;
   if (await pullPrefs().catch(() => false)) { applyTheme(); render(); }

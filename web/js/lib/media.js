@@ -83,7 +83,7 @@ async function encodeJpeg(bitmap, maxDim, quality) {
 /**
  * 上传前压缩图片：按最长边缩放并转码为 JPEG，迭代逼近目标体积。
  * 触发条件：文件超过阈值、或格式非 JPEG/PNG/WebP（如 iPhone 的 HEIC）。
- * 隧道/弱网下大图极易超时（Cloudflare 会返回错误页），因此默认压到 targetMB 以内。
+ * 隧道/弱网下大图极易超时（中继服务还会返回错误页），因此默认压到 targetMB 以内。
  * @param {File} file 原始文件
  * @param {{maxDim?: number, quality?: number, targetMB?: number, thresholdMB?: number}} options
  * @returns {Promise<{blob: Blob, name: string, originalSize: number, size: number, compressed: boolean, width?: number, height?: number, steps: number}>}

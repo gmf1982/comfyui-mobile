@@ -17,7 +17,7 @@
 - **🖼️ 图库**：历史结果瀑布流，图片 / 视频 / 音频分类浏览，视频首帧缩略图；保存到手机、分享、**用原参数一键重跑**；缩略图由网关本地生成 + 浏览器缓存，二次打开几乎不耗流量
 - **📊 队列**：实时进度、生成速度（步/秒）、显存占用、中途预览图；删除 / 清空 / 中断
 - **🧩 节点图**：在手机上直接编辑节点图——添加 / 连线 / 删除 / 重命名节点、点按修改参数
-- **🔌 一键隧道**：内置 Tailscale 与 cloudflared 支持，一条命令获得外网可访问的地址（见「手机连接」）
+- **🔌 一键隧道**：内置 Tailscale 支持，一条命令获得外网可访问的永久地址（见「手机连接」）
 - **🖥️ 远程唤醒**：ComfyUI 没开也能在手机上远程启动 / 重启电脑端的 ComfyUI
 - **🔐 开箱即用的安全**：访问令牌、防爆破封禁、写操作限流、路径穿越校验，详见「安全设计」
 - **🌍 双语界面**：中文 / English 随时切换
@@ -63,9 +63,9 @@ npm start        # 默认对接本机 8188 端口的 ComfyUI
 node server/src/index.js --tunnel=funnel
 ```
 
-不用 Tailscale？cloudflared 快速隧道免账号即开即用：`--tunnel=quick`。全部方式见下方「手机连接」。
+外网访问基于 Tailscale（免费账号即可），全部方式见下方「手机连接」。
 
-> Windows 也可以直接双击 `run.bat`。
+> Windows 也可以直接双击 `run.bat`。想让网关开机自启，见下方「进阶配置 → 开机自启」。
 
 **3️⃣ 手机连接**
 
@@ -76,11 +76,7 @@ node server/src/index.js --tunnel=funnel
 | --- | --- | --- | --- | --- |
 | Tailscale Funnel | `--tunnel=funnel` | ✅ 永久 | 什么都不用装 | 公网可访问；流量经 Tailscale 中继，**较慢**，不太适合传大图 |
 | **Tailscale Serve（推荐）** | `--tunnel=serve` | ✅ 永久 | 装 Tailscale 并保持在线 | 仅 tailnet 内可达；点对点直连**最快**，且不暴露公网 |
-| cloudflared 快速隧道 | `--tunnel=quick` | ❌ 每次重启变 | 什么都不用装 | 免账号免域名，适合临时试用 |
-| cloudflared 命名隧道 | `--tunnel=named` | ✅ 永久 | 什么都不用装 | 需要托管在 Cloudflare 的自己的域名 |
 | frp / 路由器端口转发 | — | 取决于配置 | 取决于配置 | 端口转发必须给网关配置 TLS |
-
-cloudflared 单文件可从[官方 Releases](https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe) 下载，放到项目根目录即可被自动发现。
 
 **4️⃣ 安装为 App（可选）**
 
@@ -108,9 +104,7 @@ node server/src/index.js --port=8899 --upstream=http://127.0.0.1:8188 --token=<�
   "inputDir": "",
   "thumbCacheDir": "",
   "tunnel": "funnel",
-  "tailscaleHttpsPort": 8443,
-  "cloudflared": "",
-  "comfyuiLaunch": "",
+  "tailscaleHttpsPort": 8443,  "comfyuiLaunch": "",
   "comfyuiCwd": ""
 }
 ```
@@ -193,7 +187,7 @@ docs/     开发文档
 - **🖼️ Gallery** — a waterfall of past results with image / video / audio filters and video first-frame thumbnails; save to phone, share, or **rerun with the original parameters**; thumbnails are generated locally by the gateway and cached by the browser, so re-opening costs almost no data
 - **📊 Queue** — live progress, speed (steps/s), VRAM usage and in-flight previews; delete / clear / interrupt
 - **🧩 Node graph** — edit node graphs on the phone: add / wire / delete / rename nodes, tap to change parameters
-- **🔌 One-click tunnels** — built-in Tailscale and cloudflared support; one command gets you a shareable public address (see "Connect your phone")
+- **🔌 One-click tunnels** — built-in Tailscale support; one command gets you a shareable permanent address (see "Connect your phone")
 - **🖥️ Remote wake-up** — start or restart ComfyUI on the PC remotely, even when it isn't running
 - **🔐 Secure by default** — access token, brute-force bans, write rate limiting and path-traversal checks (see "Security")
 - **🌍 Bilingual UI** — Chinese / English, switchable any time
@@ -239,9 +233,9 @@ The first launch generates `server/config.json` (with a random access token) and
 node server/src/index.js --tunnel=funnel
 ```
 
-No Tailscale? The cloudflared quick tunnel works with no account at all: `--tunnel=quick`. All options are listed under "Connect your phone".
+Remote access is built on Tailscale (a free account is all it takes); all options are listed under "Connect your phone".
 
-> On Windows you can simply double-click `run.bat`.
+> On Windows you can simply double-click `run.bat`. To have the gateway start automatically on boot, see "Advanced configuration → Autostart on boot".
 
 **3️⃣ Connect your phone**
 
@@ -252,11 +246,7 @@ No Tailscale? The cloudflared quick tunnel works with no account at all: `--tunn
 | --- | --- | --- | --- | --- |
 | Tailscale Funnel | `--tunnel=funnel` | ✅ Permanent | Nothing | Public internet; relayed through Tailscale, **slower** and not ideal for large images |
 | **Tailscale Serve (recommended)** | `--tunnel=serve` | ✅ Permanent | Tailscale installed & online | tailnet-only; **fastest** via peer-to-peer direct connection, never exposes a public endpoint |
-| cloudflared quick tunnel | `--tunnel=quick` | ❌ Changes on restart | Nothing | No account or domain needed; good for trying it out |
-| cloudflared named tunnel | `--tunnel=named` | ✅ Permanent | Nothing | Requires your own domain hosted on Cloudflare |
 | frp / port forwarding | — | Depends | Depends | Port forwarding requires gateway TLS |
-
-The single-file cloudflared binary can be downloaded from the [official releases](https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe); drop it into the project root and it is discovered automatically.
 
 **4️⃣ Install as an app (optional)**
 
@@ -284,9 +274,7 @@ node server/src/index.js --port=8899 --upstream=http://127.0.0.1:8188 --token=<y
   "inputDir": "",
   "thumbCacheDir": "",
   "tunnel": "funnel",
-  "tailscaleHttpsPort": 8443,
-  "cloudflared": "",
-  "comfyuiLaunch": "",
+  "tailscaleHttpsPort": 8443,  "comfyuiLaunch": "",
   "comfyuiCwd": ""
 }
 ```

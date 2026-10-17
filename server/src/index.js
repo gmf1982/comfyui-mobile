@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, parseArgOverrides } from './config.js';
 import { createGateway } from './gateway.js';
-import { resolveCloudflared, startTunnel, resolveTailscale, configureTailscale } from './tunnel.js';
+import { resolveTailscale, configureTailscale } from './tunnel.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(here, '..', '..');
@@ -79,8 +79,8 @@ gateway.server.listen(cfg.port, cfg.host, async () => {
 
   // 二维码下方输出无前缀纯链接，方便整行复制粘贴到手机浏览器
   console.log('');
-  collectUrls.push({ label: '本机', url: localUrl, permanent: true });
-  for (const { address } of interfaces) collectUrls.push({ label: '局域网', url: urlOf(address), permanent: true });
+  collectUrls.push({ label: '本机', url: localUrl });
+  for (const { address } of interfaces) collectUrls.push({ label: '局域网', url: urlOf(address) });
   console.log('手机浏览器打开任一链接即可自动配对（整行复制粘贴；以下为局域网/本机地址，重启不变）：');
   console.log(localUrl);
   for (const { address } of interfaces) {
@@ -90,11 +90,7 @@ gateway.server.listen(cfg.port, cfg.host, async () => {
 
   const modes = Array.isArray(cfg.tunnel) ? cfg.tunnel : (cfg.tunnel ? [cfg.tunnel] : []);
   for (const mode of modes) {
-    if (mode === 'serve' || mode === 'funnel') {
-      await setupTailscaleTunnel({ cfg, port: cfg.port, mode });
-    } else {
-      await setupTunnel({ cfg, scheme, port: cfg.port, urlOf });
-    }
+    await setupTailscaleTunnel({ cfg, port: cfg.port, mode });
   }
 
   // 所有隧道建立完成后落盘，避免写入空列表
@@ -136,7 +132,7 @@ async function setupTailscaleTunnel({ cfg, port, mode = 'serve' }) {
     console.log(`  （${created ? '本次已新建' : '复用已有'}配置；关闭：tailscale ${isPublic ? 'funnel' : 'serve'} --https=${cfg.tailscaleHttpsPort ?? 8443} off）`);
     console.log('==========================================================');
     await printQr(permanentUrl).catch(() => {});
-    collectUrls.push({ label: isPublic ? '公网（Funnel）' : 'Tailscale 直连', url: permanentUrl, permanent: true });
+    collectUrls.push({ label: isPublic ? '公网（Funnel）' : 'Tailscale 直连', url: permanentUrl });
     console.log('手机打开永久地址（整行复制粘贴）：');
     console.log(permanentUrl);
     console.log(`  测速：手机上打开 ${url}/gw/speedtest?mb=8 可测该路径吞吐（越大越慢说明链路受限）。`);
@@ -144,43 +140,6 @@ async function setupTailscaleTunnel({ cfg, port, mode = 'serve' }) {
   } catch (err) {
     console.log(`⚠ Tailscale 隧道配置失败：${err.message}`);
     console.log('  局域网地址不受影响；也可手动执行：tailscale funnel --bg --https=8443 http://127.0.0.1:' + port);
-  }
-}
-
-/** 建立cloudflared快速隧道并打印公网链接 + 二维码（外网免 Tailscale 直接访问）。 */
-async function setupTunnel({ cfg, scheme, port, urlOf }) {
-  const cloudflaredPath = await resolveCloudflared(cfg, projectRoot);
-  if (!cloudflaredPath) {
-    console.log('⚠ 已启用隧道（tunnel），但未找到 cloudflared：');
-    console.log('  1) 下载单文件版：https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe');
-    console.log('  2) 放到本项目根目录（cloudflared.exe），或加入 PATH，或在 config.json 的 cloudflared 填完整路径');
-    console.log('  重新启动网关即可自动建立隧道。');
-    return;
-  }
-  console.log(`正在建立 cloudflared 隧道（${cloudflaredPath}）…`);
-  try {
-    const { url, child } = await startTunnel({
-      targetUrl: `http://127.0.0.1:${port}`,
-      cloudflaredPath,
-      onLog: () => {}, // 隧道详细日志不刷屏；失败时 exit 事件会提示
-    });
-    const publicUrl = `${url}/?token=${cfg.token}`;
-    console.log('==========================================================');
-    console.log('  ✅ 外网隧道已建立（无需 Tailscale / 公网 IP，手机随时可访问）');
-    console.log(`  外网链接 : ${publicUrl}`);
-    console.log('  该地址公网可达，访问令牌是唯一凭证，请勿泄露链接或令牌。');
-    console.log('==========================================================');
-    await printQr(publicUrl).catch(() => {});
-    collectUrls.push({ label: '公网临时', url: publicUrl, permanent: false });
-    console.log('手机打开外网链接（整行复制粘贴）：');
-    console.log(publicUrl);
-    console.log('');
-    child.on('exit', (code) => {
-      console.log(`⚠ cloudflared 隧道已断开（code ${code}）：外网链接失效，重启网关可重建（地址会变化）。`);
-    });
-  } catch (err) {
-    console.log(`⚠ 隧道建立失败：${err.message}`);
-    console.log('  局域网/Tailscale 地址不受影响；也可手动运行 cloudflared 排查。');
   }
 }
 
@@ -203,7 +162,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 /**
  * 把本次启动的可用链接写入项目根目录的「手机链接.txt」，便于直接打开查看。
- * 永久（重启不变）与临时（重启会变）分组列出。
+ * 全部为永久地址（Tailscale 绑定机器名，重启网关/电脑都不变）。
  */
 function writeLinksFile() {
   if (!collectUrls.length) return;
@@ -212,19 +171,10 @@ function writeLinksFile() {
     'ComfyUI Mobile —— 手机访问链接',
     '（生成时间：' + stamp + '）',
     '',
+    '永久地址（重启网关/电脑都不变）：',
   ];
-  const permanent = collectUrls.filter((u) => u.permanent);
-  const temporary = collectUrls.filter((u) => !u.permanent);
-  if (permanent.length) {
-    lines.push('【推荐】永久地址（重启网关/电脑都不变）：');
-    for (const u of permanent) lines.push('  ' + u.label + '：' + u.url);
-    lines.push('');
-  }
-  if (temporary.length) {
-    lines.push('临时地址（重启网关后会变；手机没开 Tailscale 时用）：');
-    for (const u of temporary) lines.push('  ' + u.url);
-    lines.push('');
-  }
+  for (const u of collectUrls) lines.push('  ' + u.label + '：' + u.url);
+  lines.push('');
   lines.push('提示：手机第一次打开需要带上链接里的 ?token=…，之后浏览器会记住登录。');
   try {
     const file = path.join(projectRoot, '手机链接.txt');

@@ -108,7 +108,7 @@ function persistSettings() {
 }
 
 // ---------------- 偏好云端同步 ----------------
-// localStorage 按 origin 隔离：Tailscale 地址与 cloudflared 地址是两个 origin，
+// localStorage 按 origin 隔离：Tailscale 地址与局域网地址是两个 origin，
 // 收藏/设置互不相通（2026-09-28 用户实测）。把偏好存到 ComfyUI userdata
 // （cm_sync/prefs.json），登录后拉取合并、变更后防抖推送，实现跨域名/跨设备共享。
 // 推送失败不静默丢弃：脏标记落盘 + 退避重试（恢复联网/回前台/下次启动补推），

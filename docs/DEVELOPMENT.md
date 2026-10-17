@@ -71,7 +71,7 @@
 | 移动端 | 原生 ES Module + 原生 Web Components 风格函数式渲染，**无构建步骤** | 免维护打包链；单文件 CSS；手机直接加载源码 |
 | PWA | 手写 `manifest.webmanifest` + `sw.js`（App Shell 缓存） | 免工具链，可安装到主屏幕 |
 | 测试 | Node 内置 `node --test` + 自建模拟 ComfyUI | 无第三方断言库依赖，可离线 CI |
-| 广域网隧道 | 推荐 Tailscale（首选）/ frp / cloudflared / 路由器端口转发+TLS | 见 §7 |
+| 广域网隧道 | 推荐 Tailscale（首选）/ frp / 路由器端口转发+TLS | 见 §7 |
 
 UI 文案：简体中文优先，代码内字符串集中在 `web/js/lib/i18n.js`，便于后续多语言。
 
@@ -140,15 +140,12 @@ server/
   "tls": { "cert": "", "key": "" },
   "maxUploadMB": 512,
   "rateLimitPerMin": 60,
-  "tunnel": false,
-  "cloudflared": ""
+  "tunnel": false
 }
 ```
 
-- `tunnel` 取值：`false` | `quick`（cloudflared 快速隧道，地址随机）| `serve`（Tailscale 仅 tailnet）| `funnel`（Tailscale 公网）| `named`（cloudflared 命名隧道）；`true` 等价 `quick`。
+- `tunnel` 取值：`false` | `serve`（Tailscale 仅 tailnet）| `funnel`（Tailscale 公网）；`true` 等价 `serve`；逗号分隔可叠加，如 `serve,funnel`。
 - Tailscale 模式执行 `tailscale serve|funnel --bg --https=<端口> http://127.0.0.1:<网关端口>`；该配置**持久化在 Tailscale 侧**，因此网关重启后地址不变。启动时解析 `status` 输出给出当前地址（`parseTailscaleStatus` 按本机端口匹配，避免误用其他规则）。
-- `quick` 模式启动 cloudflared 快速隧道（`server/src/tunnel.js`）：spawn `cloudflared tunnel --url http://127.0.0.1:<port> --no-autoupdate`，从输出解析 `https://*.trycloudflare.com` 公网地址并打印横幅 + 二维码 + 可复制链接。
-- `cloudflared` 可执行文件定位顺序：配置项/`COMFY_MOBILE_CLOUDFLARED` 环境变量 → PATH（`where`/`which`，结果必须通过 `existsSync` 校验以淘汰 ANSI→UTF-8 解码产生的乱码路径）→ 常见安装位置 → 项目根。
 - CLI 参数与 `COMFY_MOBILE_*` 环境变量可覆盖同名配置项。
 - `token` 生成用 `crypto.randomBytes(32).toString('hex')`；比较用 `crypto.timingSafeEqual`。
 - 启动时打印：本机各网卡访问 URL（含 `?token=` 的一次性配对链接）+ 终端二维码；日志中一律脱敏 token。
@@ -287,10 +284,8 @@ web/
 | --- | --- | --- | --- |
 | **Tailscale Funnel（推荐，永久地址）** | 高（令牌 + 自动 HTTPS） | 低 | `--tunnel=funnel`；地址绑定机器名 `https://<机器>.<tailnet>.ts.net:8443`，重启不变；无需域名；手机无需装任何 App；公网多节点实测 200 |
 | **Tailscale Serve（永久，仅 tailnet）** | 最高（不暴露公网） | 低 | `--tunnel=serve`；同一永久地址；手机需登录同一 Tailscale 账号；速度更快 |
-| cloudflared 快速隧道（临时） | 高（令牌 + 自动 HTTPS） | 低 | `--tunnel=quick`；免账号/公网 IP；**地址每次重启随机变化**，适合临时使用；WS/媒体全链路实测可用 |
 | **Tailscale** | 高（WireGuard 点对点，无需公网端口） | 低 | 电脑与手机装客户端，手机访问 `http://<电脑的ts-ip>:8899`；网关 token 仍生效，双保险 |
 | frp / 自建 VPS 反代 | 高（建议 TLS） | 中 | 国内云服务器场景；`frpc` 转发 8899 |
-| cloudflared 命名隧道 | 高 | 中 | 固定域名；`cloudflared tunnel` 手动配置后无需网关内置隧道 |
 | 路由器端口转发 + 网关 TLS | 中 | 中 | 家庭宽带有公网 IP 时；必须启用网关内置 HTTPS（自签或 Let's Encrypt） |
 
 网关仅监听 `0.0.0.0:8899`，**永远不直接暴露 ComfyUI 端口**；无论哪种隧道，鉴权层始终生效。

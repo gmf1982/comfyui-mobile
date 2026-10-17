@@ -20,7 +20,6 @@ const DEFAULTS = {
   outputDir: '',
   inputDir: '',
   tunnel: false,
-  cloudflared: '',
   tailscale: '',
   tailscaleHttpsPort: 8443,
   // LLM 提示词增强（/gw/enhance-prompt）：OpenAI 兼容端点，支持多模型供手机端切换。
@@ -44,7 +43,7 @@ const DEFAULTS = {
 const OVERRIDABLE = new Set([
   'port', 'host', 'upstream', 'token', 'maxUploadMB', 'rateLimitPerMin',
   'authFailsPerMin', 'banMinutes', 'rangeFallbackMB', 'webDir', 'tls',
-  'tunnel', 'cloudflared', 'outputDir', 'inputDir', 'tailscale', 'tailscaleHttpsPort',
+  'tunnel', 'outputDir', 'inputDir', 'tailscale', 'tailscaleHttpsPort',
   'thumbCacheDir', 'promptLlm', 'comfyuiLaunch', 'comfyuiCwd',
 ]);
 
@@ -72,16 +71,16 @@ export function loadConfig({ configFile = '', overrides = {} } = {}) {
       cfg[key] = Number(cfg[key]);
     }
   }
-  // 隧道模式：true 等价 quick；支持 quick|serve|funnel|named|off
+  // 隧道模式：true 等价 serve；支持 serve|funnel|off
   if (typeof cfg.tunnel === 'string') {
     const v = cfg.tunnel.toLowerCase();
-    if (['1', 'true', 'yes', 'on'].includes(v)) cfg.tunnel = 'quick';
+    if (['1', 'true', 'yes', 'on'].includes(v)) cfg.tunnel = 'serve';
     else if (['0', 'false', 'no', 'off'].includes(v)) cfg.tunnel = false;
-    else if (v.split(',').every((m) => ['quick', 'serve', 'funnel', 'named'].includes(m.trim()))) {
+    else if (v.split(',').every((m) => ['serve', 'funnel'].includes(m.trim()))) {
       const modes = v.split(',').map((m) => m.trim()).filter(Boolean);
       cfg.tunnel = modes.length > 1 ? modes : modes[0];
     } else {
-      throw new Error(`tunnel 取值非法：${cfg.tunnel}（可选 quick|serve|funnel|named|false，多个用逗号分隔）`);
+      throw new Error(`tunnel 取值非法：${cfg.tunnel}（可选 serve|funnel|false，多个用逗号分隔）`);
     }
   }
   if (typeof cfg.tailscaleHttpsPort === 'string' && cfg.tailscaleHttpsPort !== '') {

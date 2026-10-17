@@ -1,24 +1,18 @@
 /**
- * cloudflared 快速隧道集成：无需账号与公网 IP，自动获得 HTTPS 公网地址。
- * 仅依赖 cloudflared 单文件（PATH / 项目根 / 配置路径均可）。
+ * Tailscale Serve / Funnel 集成：永久 HTTPS 地址（绑定机器名，重启不变）。
+ * 仅依赖本机已安装的 tailscale 命令（PATH / 默认安装位置 / 配置路径均可）。
  */
-import { spawn, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-/** 从 cloudflared 输出中解析 trycloudflare 公网地址。 */
-export function parseTunnelUrl(text) {
-  const match = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.exec(text ?? '');
-  return match ? match[0] : null;
-}
-
 function whichSync(cmd) {
   return new Promise((resolve) => {
     const finder = process.platform === 'win32' ? 'where' : 'which';
-    // Windows 的 where 会先搜子进程当前目录；网关常以项目根为 cwd，而 README 推荐
-    // 把 cloudflared.exe 放在项目根——cwd 命中会抢在「PATH → 常见安装位置 → 项目根」
-    // 的声明顺序之前。钉到临时目录，让 where 只看 PATH（POSIX 的 which 本就不搜 cwd）。
+    // Windows 的 where 会先搜子进程当前目录；网关常以项目根为 cwd，cwd 命中会抢在
+    // 「PATH → 常见安装位置 → 项目根」的声明顺序之前。钉到临时目录，让 where 只看
+    // PATH（POSIX 的 which 本就不搜 cwd）。
     execFile(finder, [cmd], { cwd: os.tmpdir() }, (err, stdout) => {
       if (err) return resolve(null);
       const first = String(stdout).split(/\r?\n/)[0]?.trim();
@@ -26,89 +20,6 @@ function whichSync(cmd) {
     });
   });
 }
-
-/**
- * 定位 cloudflared 可执行文件：显式配置 → PATH → 常见安装位置 → 项目根。
- * @param {{cloudflared?: string}} cfg
- * @param {string} projectRoot
- * @returns {Promise<string|null>}
- */
-export async function resolveCloudflared(cfg, projectRoot) {
-  const explicit = cfg.cloudflared || process.env.COMFY_MOBILE_CLOUDFLARED || '';
-  const candidates = [];
-  if (explicit) candidates.push(explicit);
-  candidates.push(process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
-  candidates.push(
-    'C:\\Program Files\\cloudflared\\cloudflared.exe',
-    'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe',
-    '/usr/local/bin/cloudflared',
-    '/usr/bin/cloudflared',
-    '/opt/homebrew/bin/cloudflared',
-    path.join(projectRoot, process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'),
-  );
-  for (const candidate of candidates) {
-    if (path.isAbsolute(candidate) || candidate.includes('\\') || candidate.includes('/')) {
-      if (existsSync(candidate)) return candidate;
-      continue;
-    }
-    const found = await whichSync(candidate);
-    // where/which 输出按系统 ANSI 编码（Windows 中文为 GBK），按 UTF-8 解码会把
-    // 非 ASCII 路径变成 U+FFFD 乱码；存在性校验可淘汰这类损坏结果
-    if (found && existsSync(found)) return found;
-  }
-  return null;
-}
-
-/**
- * 启动快速隧道并等待公网地址。
- * @param {{ targetUrl: string, cloudflaredPath: string, timeoutMs?: number, onLog?: (line: string) => void }} options
- * @returns {Promise<{ url: string, child: import('node:child_process').ChildProcess }>}
- */
-export function startTunnel({ targetUrl, cloudflaredPath, timeoutMs = 60_000, onLog }) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(cloudflaredPath, ['tunnel', '--url', targetUrl, '--no-autoupdate'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    let output = '';
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill();
-      reject(new Error(`cloudflared ${Math.round(timeoutMs / 1000)}s 内未返回隧道地址（检查网络或手动运行确认）`));
-    }, timeoutMs);
-
-    const handle = (chunk) => {
-      const text = chunk.toString();
-      output += text;
-      onLog?.(text.trim());
-      if (settled) return;
-      const url = parseTunnelUrl(output);
-      if (url) {
-        settled = true;
-        clearTimeout(timer);
-        resolve({ url, child });
-      }
-    };
-    child.stdout.on('data', handle);
-    child.stderr.on('data', handle); // cloudflared 日志走 stderr
-    child.on('error', (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(new Error(`无法启动 cloudflared：${err.message}`));
-    });
-    child.on('exit', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(new Error(`cloudflared 提前退出（code ${code}）`));
-    });
-  });
-}
-
-// ---------------- Tailscale Serve / Funnel（永久地址） ----------------
 
 /**
  * 定位 tailscale 可执行文件（Windows 默认安装路径 / PATH）。
