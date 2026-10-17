@@ -1,5 +1,5 @@
 /**
- * 网关入口：解析 CLI/env → 加载配置 → 启动 http(s) 服务器 → 打印配对二维码。
+ * 网关入口：解析 CLI/env → 加载配置 → 启动 http(s) 服务器 → 打印访问地址。
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -29,7 +29,7 @@ let cfg;
 try {
   cfg = loadConfig({ configFile, overrides: { ...envOverrides(), ...argOverrides } });
 } catch (err) {
-  console.error(`[comfyui-mobile] 配置错误：${err.message}`);
+  console.error(`[comfyui-mobile] Config error / 配置错误：${err.message}`);
   process.exit(1);
 }
 
@@ -51,47 +51,29 @@ gateway.server.listen(cfg.port, cfg.host, async () => {
       interfaces.push({ name, address: addr.address });
     }
   }
-  const isTailscale = (ip) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip);
-  const isPrivateLan = (ip) => /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip);
-
   const urlOf = (ip) => `${scheme}://${ip}:${cfg.port}/?token=${token}`;
   const localUrl = urlOf('127.0.0.1');
-  // 二维码优先指向局域网地址（在家扫码即用）；无局域网时退回本机地址
-  const qrIp = (interfaces.find((i) => isPrivateLan(i.address)) ?? interfaces[0])?.address ?? '127.0.0.1';
 
   console.log('==========================================================');
-  console.log('  ComfyUI Mobile 网关已启动');
-  console.log(`  上游 ComfyUI : ${cfg.upstream}`);
-  console.log(`  访问令牌     : ${token}`);
-  console.log('');
-  console.log('  可用地址（方括号为网卡名，Tailscale 即外网可用）：');
-  console.log(`    [本机]       ${localUrl}`);
-  for (const { name, address } of interfaces) {
-    const tag = isTailscale(address) ? '（外网可用）' : '';
-    console.log(`    [${name}] ${tag} ${urlOf(address)}`);
-  }
-  console.log('==========================================================');
-  if (!cfg.tls) {
-    console.log('  ⚠ 当前为 HTTP 明文，公网直连会泄露令牌；建议 Tailscale 等隧道或配置 tls 证书。');
-  }
-
-  await printQr(urlOf(qrIp)).catch(() => {});
-
-  // 二维码下方输出无前缀纯链接，方便整行复制粘贴到手机浏览器
-  console.log('');
-  collectUrls.push({ label: '本机', url: localUrl });
-  for (const { address } of interfaces) collectUrls.push({ label: '局域网', url: urlOf(address) });
-  console.log('手机浏览器打开任一链接即可自动配对（整行复制粘贴；以下为局域网/本机地址，重启不变）：');
-  console.log(localUrl);
-  for (const { address } of interfaces) {
-    console.log(urlOf(address));
-  }
+  console.log('  ComfyUI Mobile gateway is running / 网关已启动');
+  console.log(`  Upstream ComfyUI : ${cfg.upstream}`);
   console.log('');
 
   const modes = Array.isArray(cfg.tunnel) ? cfg.tunnel : (cfg.tunnel ? [cfg.tunnel] : []);
+  let tunnelReady = false;
   for (const mode of modes) {
-    await setupTailscaleTunnel({ cfg, port: cfg.port, mode });
+    if (await setupTailscaleTunnel({ cfg, port: cfg.port, mode })) tunnelReady = true;
   }
+
+  // 只显示 Tailscale 地址；隧道不可用时才退回本机/局域网，避免无从连接
+  if (!tunnelReady) {
+    collectUrls.push({ label: '本机', url: localUrl });
+    for (const { address } of interfaces) collectUrls.push({ label: '局域网', url: urlOf(address) });
+    console.log('  未启用可用的 Tailscale 地址，改用本机/局域网地址（仅同一网络可用）：');
+    for (const u of collectUrls) console.log('  ' + u.url);
+    if (!cfg.tls) console.log('  ⚠ HTTP 明文：请勿把该地址直接暴露到公网。');
+  }
+  console.log('==========================================================');
 
   // 所有隧道建立完成后落盘，避免写入空列表
   writeLinksFile();
@@ -105,50 +87,26 @@ async function setupTailscaleTunnel({ cfg, port, mode = 'serve' }) {
   const isPublic = mode === 'funnel';
   const bin = await resolveTailscale(cfg);
   if (!bin) {
-    console.log('⚠ 已选择 Tailscale 隧道，但未找到 tailscale 命令：');
-    console.log('  安装后重试，或在 config.json 的 tailscale 字段填写完整路径。');
-    console.log('  下载：https://tailscale.com/download');
-    return;
+    console.log('  ⚠ 未找到 tailscale 命令，跳过 Tailscale 隧道。');
+    console.log('    安装：https://tailscale.com/download');
+    return null;
   }
   try {
-    const { url, created } = await configureTailscale({
+    const { url } = await configureTailscale({
       bin,
       localPort: port,
       httpsPort: cfg.tailscaleHttpsPort ?? 8443,
       public: isPublic,
     });
     const permanentUrl = `${url}/?token=${cfg.token}`;
-    console.log('==========================================================');
-    console.log(`  ✅ ${isPublic ? 'Tailscale Funnel（公网）' : 'Tailscale Serve（仅 tailnet）'} 已就绪`);
-    console.log('  该地址为【永久地址】：绑定机器名，重启网关/重启电脑都不变。');
-    console.log(`  永久地址 : ${permanentUrl}`);
-    if (isPublic) {
-      console.log('  公网可访问：手机无需安装 Tailscale，任何网络直接打开。');
-      console.log('  令牌是唯一凭证，请勿泄露链接。');
-    } else {
-      console.log('  仅 tailnet 内可用：手机需登录同一 Tailscale 账号（速度更快）。');
-      console.log(`  如需公网访问：tailscale funnel --bg --https=${cfg.tailscaleHttpsPort ?? 8443} http://127.0.0.1:${port}`);
-    }
-    console.log(`  （${created ? '本次已新建' : '复用已有'}配置；关闭：tailscale ${isPublic ? 'funnel' : 'serve'} --https=${cfg.tailscaleHttpsPort ?? 8443} off）`);
-    console.log('==========================================================');
-    await printQr(permanentUrl).catch(() => {});
-    collectUrls.push({ label: isPublic ? '公网（Funnel）' : 'Tailscale 直连', url: permanentUrl });
-    console.log('手机打开永久地址（整行复制粘贴）：');
-    console.log(permanentUrl);
-    console.log(`  测速：手机上打开 ${url}/gw/speedtest?mb=8 可测该路径吞吐（越大越慢说明链路受限）。`);
+    console.log(`  ${isPublic ? 'Tailscale Funnel（公网）' : 'Tailscale Serve（仅 tailnet）'}：`);
+    console.log('  ' + permanentUrl);
     console.log('');
+    collectUrls.push({ label: isPublic ? 'Tailscale Funnel' : 'Tailscale Serve', url: permanentUrl, permanent: true });
+    return permanentUrl;
   } catch (err) {
-    console.log(`⚠ Tailscale 隧道配置失败：${err.message}`);
-    console.log('  局域网地址不受影响；也可手动执行：tailscale funnel --bg --https=8443 http://127.0.0.1:' + port);
-  }
-}
-
-async function printQr(url) {
-  try {
-    const qrcode = (await import('qrcode')).default;
-    console.log(await qrcode.toString(url, { type: 'terminal', small: true }));
-  } catch {
-    // qrcode 缺失只影响二维码展示，链接文本已给出
+    console.log(`  ⚠ Tailscale 隧道配置失败：${err.message}`);
+    return null;
   }
 }
 
@@ -167,11 +125,12 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 function writeLinksFile() {
   if (!collectUrls.length) return;
   const stamp = new Date().toLocaleString('zh-CN');
+  const hasTunnel = collectUrls.some((u) => u.permanent);
   const lines = [
     'ComfyUI Mobile —— 手机访问链接',
     '（生成时间：' + stamp + '）',
     '',
-    '永久地址（重启网关/电脑都不变）：',
+    hasTunnel ? 'Tailscale 永久地址（重启网关/电脑都不变）：' : '本机/局域网地址（仅同一网络可用）：',
   ];
   for (const u of collectUrls) lines.push('  ' + u.label + '：' + u.url);
   lines.push('');

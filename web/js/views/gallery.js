@@ -140,7 +140,9 @@ export async function galleryView(container) {
       tile.append(el('div', { class: 'tile-ico', text: '🎵' }));
     }
     const secs = entry.durationMs ? Math.round(entry.durationMs / 1000) : null;
-    const dur = secs != null ? (secs >= 60 ? Math.floor(secs / 60) + '分' + (secs % 60) + '秒' : secs + '秒') : '';
+    const dur = secs != null
+      ? (secs >= 60 ? tf('{m}分{s}秒', { m: Math.floor(secs / 60), s: secs % 60 }) : tf('{s}秒', { s: secs }))
+      : '';
     tile.append(el('div', { class: 'tile-name', text: item.filename + (dur ? ' · ' + dur : '') }));
     if (deletedIds.has(entry.promptId)) {
       tile.classList.add('tile-deleted');
@@ -205,17 +207,19 @@ export async function galleryView(container) {
       return;
     }
     let fileNote = '';
+    let diskDeleted = false;
     if (item) {
       try {
         const q = new URLSearchParams({ filename: item.filename ?? '', subfolder: item.subfolder ?? '', type: item.type ?? 'output' });
         await apiJson(`/gw/output-file?${q}`, { method: 'DELETE' });
-        fileNote = '（含磁盘文件）';
+        diskDeleted = true;
+        fileNote = t('（含磁盘文件）');
       } catch (err) {
-        fileNote = err.status === 501 ? t('（磁盘文件未删除：网关未配置 outputDir）') : t('（磁盘文件未删除：') + err.message + '）';
+        fileNote = err.status === 501 ? t('（磁盘文件未删除：网关未配置 outputDir）') : t('（磁盘文件未删除：') + err.message + t('）');
       }
     }
     deletedIds.add(entry.promptId);
-    if (item && fileNote.startsWith('（含')) deletedFiles++;
+    if (diskDeleted) deletedFiles++;
     markDeleted(entry);
     renderPendingBar();
     toast(tf('已删除 {name}{note}', { name: label, note: fileNote }) + t('（可继续删除，点「刷新列表」更新）'));

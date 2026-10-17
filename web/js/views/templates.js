@@ -86,13 +86,13 @@ export async function templatesView(container) {
   }
 
   modeChips.append(
-    el('button', { class: 'chip active', text: t('官方模板'), onclick: () => switchMode('official') }),
-    el('button', { class: 'chip', text: t('节点示例'), onclick: () => switchMode('node') }),
+    el('button', { class: 'chip active', 'data-mode': 'official', text: t('官方模板'), onclick: () => switchMode('official') }),
+    el('button', { class: 'chip', 'data-mode': 'node', text: t('节点示例'), onclick: () => switchMode('node') }),
   );
 
   async function switchMode(m) {
     mode = m;
-    for (const c of modeChips.children) c.classList.toggle('active', (m === 'official') === c.textContent.includes('官方'));
+    for (const c of modeChips.children) c.classList.toggle('active', c.dataset.mode === m);
     await renderChips();
     await renderList();
   }
@@ -216,7 +216,7 @@ export async function templatesView(container) {
       }
     }
     if (!count) list.append(el('div', { class: 'muted', text: t('没有匹配的模板') }));
-    else list.append(el('div', { class: 'muted', style: { textAlign: 'center' }, text: count >= 60 ? '仅显示前 60 条，请 refine 搜索词' : `共 ${count} 条` }));
+    else list.append(el('div', { class: 'muted', style: { textAlign: 'center' }, text: count >= 60 ? t('仅显示前 60 条，请 refine 搜索词') : tf('共 {n} 条', { n: count }) }));
   }
 
   async function renderList() {

@@ -5,10 +5,10 @@
  * 增强引擎见 prompt-enhancer.js：按当前工作流检测到的模型（Qwen/Z-Image/Krea/H3）套模板扩写。
  */
 import { el, showSheet, hideSheet, toast } from './ui.js';
-import { state, saveSettings } from './state.js';
+import { state, saveSettings, loadWorkflowParams } from './state.js';
 import { apiJson } from './api.js';
 import { t, tf } from './i18n.js';
-import { enhancePrompt, detectModelProfile, detectMode, MODEL_PROFILES } from './prompt-enhancer.js';
+import { enhancePrompt, detectModelProfile, detectMode, promptLang, MODEL_PROFILES } from './prompt-enhancer.js';
 
 const MAX_SNIPPETS = 50;
 
@@ -89,9 +89,10 @@ export function openPromptAssistant(textarea) {
     },
   });
 
-  // ---- 规则式增强区：按当前工作流模型套模板扩写（不用 LLM） ----
-  const profileKey = detectModelProfile(state.workflow?.json);
-  const profileLabel = MODEL_PROFILES[profileKey]?.label ?? MODEL_PROFILES.generic.label;
+  // ---- 规则式增强区：按当前工作流 + 表单里的模型选择套模板扩写（不用 LLM） ----
+  const wfParams = loadWorkflowParams(state.workflow);
+  const profileKey = detectModelProfile(state.workflow?.json, wfParams);
+  const profileLabel = t(MODEL_PROFILES[profileKey]?.label ?? MODEL_PROFILES.generic.label);
   let mode = detectMode(state.workflow?.json, profileKey);
   const MODE_LABELS = { t2i: '文生图', edit: '图生图·编辑', video: '视频' };
 
@@ -108,7 +109,7 @@ export function openPromptAssistant(textarea) {
   }
   renderModeChips();
 
-  // 增强模型选择：网关配置了多个模型（config.promptLlm.models）时显示下拉，选择随偏好同步。
+  // 增强模型选择：打开助手时实时探测端点上的模型；配置变化/新装模型可点 ↻ 重探。
   // 拉取失败/未启用 → 该行保持隐藏，增强走默认模型或规则回退。
   let modelChoices = null;
   let chosen = typeof state.settings.enhanceModel === 'string' ? state.settings.enhanceModel : '';
@@ -120,24 +121,50 @@ export function openPromptAssistant(textarea) {
       saveSettings();
     },
   });
-  const modelRow = el('div', { class: 'row', style: { alignItems: 'center', gap: '8px', marginTop: '10px' } },
-    el('span', { class: 'muted', style: { fontSize: '11px', flex: 'none' }, text: t('增强模型') }),
-    modelSel,
+  const modelRefresh = el('button', {
+    class: 'btn tiny', text: '↻', title: t('重新探测模型'),
+    onclick: () => loadEnhanceModels(true),
+  });
+  const modelHint = el('div', { class: 'muted', style: { fontSize: '11px', marginTop: '4px' } });
+  modelHint.hidden = true;
+  const modelRow = el('div', { style: { marginTop: '10px' } },
+    el('div', { class: 'row', style: { alignItems: 'center', gap: '8px' } },
+      el('span', { class: 'muted', style: { fontSize: '11px', flex: 'none' }, text: t('增强模型') }),
+      modelSel,
+      modelRefresh,
+    ),
+    modelHint,
   );
   modelRow.hidden = true;
   // 下拉首项 = "不用 LLM"：选中后增强直接走内置规则引擎、不发网关请求（选择照常随偏好同步）。
   const RULES_OPT = '__rules__';
-  apiJson('/gw/enhance-models').then((r) => {
-    if (!r?.enabled || !Array.isArray(r.models) || !r.models.length) return;
-    modelChoices = r.models;
-    if (chosen !== RULES_OPT && !modelChoices.some((m) => m.name === chosen)) chosen = r.default ?? modelChoices[0].name;
-    modelSel.replaceChildren(
-      el('option', { value: RULES_OPT, text: t('不用 LLM（内置规则）') }),
-      ...modelChoices.map((m) => el('option', { value: m.name, text: m.name })),
-    );
-    modelSel.value = chosen;
-    modelRow.hidden = false;
-  }).catch(() => { /* 未配置增强时保持隐藏 */ });
+
+  async function loadEnhanceModels(fresh = false) {
+    modelRefresh.disabled = true;
+    try {
+      const r = await apiJson(`/gw/enhance-models${fresh ? '?refresh=1' : ''}`);
+      if (!r?.enabled || !Array.isArray(r.models) || !r.models.length) {
+        modelRow.hidden = true;
+        return;
+      }
+      modelChoices = r.models;
+      if (chosen !== RULES_OPT && !modelChoices.some((m) => m.key === chosen)) chosen = r.default ?? modelChoices[0].key;
+      modelSel.replaceChildren(
+        el('option', { value: RULES_OPT, text: t('不用 LLM（内置规则）') }),
+        ...modelChoices.map((m) => el('option', { value: m.key, text: m.name })),
+      );
+      modelSel.value = chosen;
+      modelRow.hidden = false;
+      modelHint.hidden = r.live !== false;
+      modelHint.textContent = r.live === false ? t('端点不可达，显示配置中的模型') : '';
+      if (fresh) toast(t('模型列表已更新'));
+    } catch {
+      if (fresh) toast(t('探测失败，已保留原列表'));
+    } finally {
+      modelRefresh.disabled = false;
+    }
+  }
+  loadEnhanceModels();
 
   const enhNotes = el('div', { class: 'muted', style: { fontSize: '11px', margin: '6px 2px 0' } });
   const preview = el('textarea', {
@@ -156,7 +183,7 @@ export function openPromptAssistant(textarea) {
     if (chosen === RULES_OPT) {
       const r = enhancePrompt({ text: src, profileKey, mode });
       preview.value = r.text;
-      enhNotes.textContent = [t('来源：内置规则（已选择不使用 LLM）'), ...r.notes.map((n) => t(n))].join('；');
+      enhNotes.textContent = [t('来源：内置规则（已选择不使用 LLM）'), ...r.notes.map((n) => t(n))].join(t('；'));
       enhResult.hidden = false;
       return;
     }
@@ -164,10 +191,14 @@ export function openPromptAssistant(textarea) {
     let out = '';
     let notes = [];
     try {
+      const selected = modelChoices?.find((m) => m.key === chosen);
       const r = await apiJson('/gw/enhance-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: src, profileKey, mode, ...(chosen ? { model: chosen } : {}) }),
+        body: JSON.stringify({
+          text: src, profileKey, mode, lang: promptLang(src),
+          ...(selected ? { model: selected.model, route: selected.route } : {}),
+        }),
       });
       out = r.text;
       notes = [tf('来源：智能增强（{m}）', { m: r.name ?? r.model ?? 'LLM' })];
@@ -180,7 +211,7 @@ export function openPromptAssistant(textarea) {
       if (enhBtn) { enhBtn.disabled = false; enhBtn.textContent = '⚡ ' + t('增强'); }
     }
     preview.value = out;
-    enhNotes.textContent = notes.join('；');
+    enhNotes.textContent = notes.join(t('；'));
     enhResult.hidden = false;
   }
 
@@ -224,7 +255,11 @@ export function openPromptAssistant(textarea) {
     el('div', { class: 'enh-sec' },
       el('div', { class: 'row', style: { alignItems: 'center', gap: '6px', marginBottom: '10px' } },
         enhBtn = el('button', { class: 'btn small primary', text: '⚡ ' + t('增强'), onclick: () => runEnhance() }),
-        el('span', { class: 'muted', style: { fontSize: '11px', flex: '1' }, text: tf('模型：{m}', { m: profileLabel }) }),
+        el('span', {
+          class: 'muted', style: { fontSize: '11px', flex: '1' },
+          title: t('根据当前工作流与表单中的模型选择自动识别'),
+          text: tf('模型：{m}', { m: profileLabel }),
+        }),
       ),
       el('div', { class: 'row', style: { alignItems: 'center', gap: '8px' } },
         el('span', { class: 'muted', style: { fontSize: '11px', flex: 'none' }, text: t('模式') }),
@@ -256,7 +291,7 @@ export function openPromptAssistant(textarea) {
 
   function renderChips() {
     clearChips();
-    if (snippets().length) chipsRow.append(chip(`⭐ ${t('我的收藏')}（${snippets().length}）`, FAV_CAT));
+    if (snippets().length) chipsRow.append(chip(`⭐ ${t('我的收藏')} (${snippets().length})`, FAV_CAT));
     for (const cat of CATEGORIES) chipsRow.append(chip(t(cat.label), cat.label));
   }
 

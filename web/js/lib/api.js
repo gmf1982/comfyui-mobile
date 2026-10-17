@@ -1,6 +1,8 @@
 /**
  * API 客户端：自动携带令牌、401 统一处理、可重连 WebSocket、单节点 schema 缓存。
  */
+import { getLang } from './lang.js';
+
 const TOKEN_KEY = 'cm_token';
 const CLIENT_KEY = 'cm_client_id';
 const OBJINFO_KEY = 'cm_objinfo';
@@ -39,15 +41,16 @@ export const CLIENT_ID = (() => {
 export async function api(path, opts = {}) {
   const headers = new Headers(opts.headers ?? {});
   if (getToken()) headers.set('Authorization', `Bearer ${getToken()}`);
+  headers.set('X-App-Lang', getLang());
   let res;
   try {
     res = await fetch(path, { ...opts, headers });
   } catch (err) {
-    throw new ApiError(0, `网络错误：${err.message}`);
+    throw new ApiError(0, getLang() === 'en' ? `Network error: ${err.message}` : `网络错误：${err.message}`);
   }
   if (res.status === 401) {
     bus.dispatchEvent(new CustomEvent('cm:unauthorized'));
-    throw new ApiError(401, '未登录或令牌失效');
+    throw new ApiError(401, getLang() === 'en' ? 'Not signed in or the token has expired' : '未登录或令牌失效');
   }
   if (res.status === 429) {
     // 封禁（鉴权失败过多）与写限流都返回 429，只有封禁需要客户端停轮询退避
@@ -254,6 +257,7 @@ export async function uploadMedia(file, options = {}) {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/upload/image');
       if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+      xhr.setRequestHeader('X-App-Lang', getLang());
       xhr.upload.onprogress = (ev) => {
         if (ev.lengthComputable) options.onProgress?.(ev.loaded, ev.total);
       };
@@ -261,7 +265,9 @@ export async function uploadMedia(file, options = {}) {
         const text = xhr.responseText ?? '';
         // 隧道/网关异常时返回的是 HTML 错误页而非 JSON
         if (text.trimStart().startsWith('<')) {
-          reject(new ApiError(xhr.status, '网络中断（服务器返回错误页，通常是图片过大或网速过慢）'));
+          reject(new ApiError(xhr.status, getLang() === 'en'
+            ? 'Upload interrupted: the server returned an error page (usually the image is too large or the connection is slow)'
+            : '网络中断（服务器返回错误页，通常是图片过大或网速过慢）'));
           return;
         }
         let parsed = null;
@@ -269,7 +275,9 @@ export async function uploadMedia(file, options = {}) {
         if (xhr.status >= 200 && xhr.status < 300 && parsed) resolve(parsed);
         else reject(new ApiError(xhr.status, parsed?.message ?? parsed?.error ?? ('HTTP ' + xhr.status)));
       };
-      xhr.onerror = () => reject(new ApiError(0, '网络错误（上传中断，可能是网速过慢）'));
+      xhr.onerror = () => reject(new ApiError(0, getLang() === 'en'
+        ? 'Network error: upload interrupted (the connection may be slow)'
+        : '网络错误（上传中断，可能是网速过慢）'));
       xhr.send(body);
     });
     invalidateSchemaCache();

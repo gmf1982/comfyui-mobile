@@ -1,5 +1,7 @@
 # ComfyUI Mobile 开发文档
 
+> English: setup and usage are covered in [README](../README.md#english). This internal development document is kept in Chinese.
+
 手机广域网远程控制电脑 ComfyUI 的完整方案：电脑侧运行一个**安全网关**，手机侧使用**移动端优先的 Web 应用**（PWA）。所有功能通过浏览器使用，无需在手机安装 App。
 
 - 目标 ComfyUI 版本：以 0.37.0 实测为准（本文所有端点均在本机 `http://127.0.0.1:8188` 验证通过）
@@ -67,7 +69,7 @@
 
 | 层 | 选型 | 理由 |
 | --- | --- | --- |
-| 网关 | Node.js 原生 `http`/`https` + `ws` + `qrcode`，ESM | 零框架依赖面小、流式代理可控；`ws` 是 Node 唯一成熟的 WS 服务端；`qrcode` 用于终端打印配对二维码 |
+| 网关 | Node.js 原生 `http`/`https` + `ws`，ESM | 零框架依赖面小、流式代理可控；`ws` 是 Node 唯一成熟的 WS 服务端 |
 | 移动端 | 原生 ES Module + 原生 Web Components 风格函数式渲染，**无构建步骤** | 免维护打包链；单文件 CSS；手机直接加载源码 |
 | PWA | 手写 `manifest.webmanifest` + `sw.js`（App Shell 缓存） | 免工具链，可安装到主屏幕 |
 | 测试 | Node 内置 `node --test` + 自建模拟 ComfyUI | 无第三方断言库依赖，可离线 CI |
@@ -118,7 +120,7 @@ UI 文案：简体中文优先，代码内字符串集中在 `web/js/lib/i18n.js
 
 ```
 server/
-  src/                  # 同下；package.json 位于项目根目录（单包，deps: ws、qrcode）
+  src/                  # 同下；package.json 位于项目根目录（单包，deps: ws、sharp）
     index.js            # 入口：解析参数 → 配置 → 启动
     config.js           # config.json 读写、首次生成随机 token、CLI/env 覆盖
     gateway.js          # http(s) 服务器、路由分发、鉴权中间件、限流
@@ -148,7 +150,7 @@ server/
 - Tailscale 模式执行 `tailscale serve|funnel --bg --https=<端口> http://127.0.0.1:<网关端口>`；该配置**持久化在 Tailscale 侧**，因此网关重启后地址不变。启动时解析 `status` 输出给出当前地址（`parseTailscaleStatus` 按本机端口匹配，避免误用其他规则）。
 - CLI 参数与 `COMFY_MOBILE_*` 环境变量可覆盖同名配置项。
 - `token` 生成用 `crypto.randomBytes(32).toString('hex')`；比较用 `crypto.timingSafeEqual`。
-- 启动时打印：本机各网卡访问 URL（含 `?token=` 的一次性配对链接）+ 终端二维码；日志中一律脱敏 token。
+- 启动时打印：Tailscale 永久访问 URL（含 `?token=` 的配对链接）；未启用隧道时退回本机/局域网 URL；日志中一律脱敏 token。
 
 ### 5.3 路由与鉴权
 

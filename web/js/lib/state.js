@@ -1,13 +1,14 @@
 /** 全局状态：当前工作流、视图清理钩子、持久化设置、PWA 安装事件。 */
 import { apiJson, getToken } from './api.js';
+import { getLang, setLang } from './lang.js';
 
 const SETTINGS_KEY = 'cm_settings';
 
 function loadSettings() {
   try {
-    return { maxItems: 100, theme: 'dark', ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
+    return { maxItems: 100, theme: 'dark', lang: getLang(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
   } catch {
-    return { maxItems: 100, theme: 'dark' };
+    return { maxItems: 100, theme: 'dark', lang: getLang() };
   }
 }
 
@@ -94,6 +95,7 @@ export const state = {
 };
 
 export function saveSettings() {
+  setLang(state.settings.lang);
   persistSettings();
   pushPrefsSoon();
 }

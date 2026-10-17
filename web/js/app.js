@@ -83,7 +83,7 @@ bus.addEventListener('cm:banned', () => {
 bus.addEventListener('cm:login', async () => {
   unsubscribed = false;
   resumeBackgroundPolling();
-  if (await pullPrefs().catch(() => false)) { applyTheme(); render(); }
+  if (await pullPrefs().catch(() => false)) { applyTheme(); applyLang(); render(); }
 });
 
 // 底部导航
@@ -161,6 +161,21 @@ function applyTheme() {
   document.documentElement.dataset.theme = state.settings.theme ?? 'dark';
 }
 
+/** 同步 html lang 与静态 DOM（底部导航 aria-label、连接状态 title）。 */
+function applyLang() {
+  const lang = getLang();
+  document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+  for (const node of document.querySelectorAll('[data-i18n]')) {
+    node.textContent = t(node.dataset.i18n);
+  }
+  for (const node of document.querySelectorAll('[data-i18n-aria-label]')) {
+    node.setAttribute('aria-label', t(node.dataset.i18nAriaLabel));
+  }
+  for (const node of document.querySelectorAll('[data-i18n-title]')) {
+    node.setAttribute('title', t(node.dataset.i18nTitle));
+  }
+}
+
 function acceptPairingToken() {
   const q = new URLSearchParams(location.search);
   const token = q.get('token');
@@ -210,7 +225,7 @@ watchPendingRun();
 // 云端偏好同步：收藏/设置/多开列表跨域名（Tailscale 与局域网地址是不同 origin）共享
 (async () => {
   if (!getToken()) return;
-  if (await pullPrefs().catch(() => false)) { applyTheme(); render(); }
+  if (await pullPrefs().catch(() => false)) { applyTheme(); applyLang(); render(); }
 })();
 
 // 跨刷新恢复上次打开的工作流（静默，不跳转页面）
@@ -230,12 +245,7 @@ watchPendingRun();
   }
 })();
 
-// 静态 DOM 里的文案（底部导航标签）按当前语言替换
-for (const node of document.querySelectorAll('[data-i18n]')) {
-  node.textContent = t(node.dataset.i18n);
-}
-if (getLang() === 'en') document.documentElement.lang = 'en';
-
+applyLang();
 applyTheme();
 acceptPairingToken();
 connectSocket();

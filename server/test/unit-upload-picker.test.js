@@ -159,7 +159,7 @@ test('媒体字段把上传/拍照按钮常显在字段下方（第 6 轮曾误�
 test('生成结果始终显示用时（含缓存命中与客户端回退）', () => {
   const q = fs.readFileSync('web/js/views/queue.js', 'utf8');
   assert.match(q, /function formatDuration\(ms\)/, '应有耗时格式化');
-  assert.match(q, /ms < 1000\) return '用时 ' \+ ms \+ ' 毫秒（缓存命中，未重新计算）'/, '极短耗时标注缓存命中');
+  assert.match(q, /ms < 1000\) return tf\('用时 \{ms\} 毫秒（缓存命中，未重新计算）', \{ ms \}\)/, '极短耗时标注缓存命中');
   assert.match(q, /st && su \? su - st : \(runStats\.startedAt \? Date\.now\(\) - runStats\.startedAt : null\)/, '时间戳缺失时回退客户端计时');
   assert.doesNotMatch(q, /durationMs = st && su && su - st > 900 \? su - st : null/, '不应再过滤短耗时');
   assert.match(q, /item\.filename \+ \(lastResult\.durationMs != null \? ' · ' \+ formatDuration/, '每张结果也带用时');

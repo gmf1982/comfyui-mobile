@@ -5,7 +5,9 @@
  * 约定：视图里直接写 t('中文文案')；带占位符的用 tf('{n} 个文件', { n })。
  * 旧版 camelCase 键（t('refresh')）仅作兼容保留，新代码一律用中文文案作键。
  */
-import { state } from './state.js';
+import { getLang, setLang } from './lang.js';
+
+export { getLang, setLang };
 
 /** 旧版键名 → 中文（兼容历史调用）。 */
 export const T = {
@@ -387,6 +389,10 @@ const EN = {
   '来源：内置规则（网关未配置 LLM 或调用失败）': 'Source: built-in rules (gateway LLM not configured or failed)',
   '智能增强不可用，已用规则增强': 'LLM enhance unavailable — used rule-based enhance',
   '模式': 'Mode', '增强模型': 'Enhance model',
+  '根据当前工作流与表单中的模型选择自动识别': 'Detected from the current workflow and the model selected in the form',
+  '重新探测模型': 'Refresh models', '模型列表已更新': 'Model list updated',
+  '探测失败，已保留原列表': 'Discovery failed; keeping the current list',
+  '端点不可达，显示配置中的模型': 'Endpoint unreachable — showing configured models',
   // 第二十四轮（8080 直连 + 不用 LLM 开关 + 编辑指令防跑题）
   '不用 LLM（内置规则）': 'No LLM (built-in rules)',
   '来源：内置规则（已选择不使用 LLM）': 'Source: built-in rules (LLM disabled by choice)',
@@ -405,16 +411,76 @@ const EN = {
   'ComfyUI 已就绪': 'ComfyUI is ready',
   '启动失败：': 'Start failed: ',
   'ComfyUI 未连接，已登录；可到「设置」里远程启动 ComfyUI': 'ComfyUI is offline but you are logged in; start it remotely in Settings',
+  // 工作流表单 / 节点图（workflow-form.js、graph.js、node-editor.js）
+  '采样器': 'Sampler', '采样器（高级）': 'Sampler (advanced)', '自定义采样': 'Custom sampler',
+  '自定义采样（高级）': 'Custom sampler (advanced)', '采样器选择': 'Sampler select',
+  '调度器选择': 'Scheduler select', '大模型': 'Checkpoint', '扩散模型': 'Diffusion model',
+  '文本编码器': 'Text encoder', '双文本编码器': 'Dual text encoder', '四重文本编码器': 'Quad text encoder',
+  'LoRA（仅模型）': 'LoRA (model only)', '提示词编码': 'Prompt encode', 'CLIP 层数': 'CLIP layer',
+  '空白潜在': 'Empty latent', '空白潜在（SD3）': 'Empty latent (SD3)',
+  '空白视频潜在': 'Empty video latent', '空白视频潜在（Mochi）': 'Empty video latent (Mochi)',
+  'VAE 解码': 'VAE decode', 'VAE 编码': 'VAE encode', 'VAE 解码（分块）': 'VAE decode (tiled)',
+  '保存图像': 'Save image', '预览图像': 'Preview image', '加载图片': 'Load image',
+  '加载图片（蒙版）': 'Load image (mask)', '加载图片（输出目录）': 'Load image (output)',
+  '图像缩放': 'Image scale', '图像缩放（比例）': 'Image scale (factor)', '潜在放大': 'Latent upscale',
+  '放大模型': 'Upscale model', '模型放大': 'Upscale with model', '保存音频': 'Save audio',
+  '保存音频（MP3）': 'Save audio (MP3)', '保存音频（Opus）': 'Save audio (Opus)',
+  '保存音频（FLAC）': 'Save audio (FLAC)', '加载音频': 'Load audio', '合成视频': 'Combine video',
+  '加载视频': 'Load video', '加载图片序列': 'Load image sequence', '随机噪声': 'Random noise',
+  '引导强度': 'Guidance', '模型采样设置': 'Model sampling', '模型采样设置（Flux）': 'Model sampling (Flux)',
+  '条件置零': 'Zero out conditioning', '条件合并': 'Combine conditioning',
+  'ControlNet 加载': 'ControlNet loader', 'ControlNet 应用': 'ControlNet apply',
+  'CLIP-Vision 加载': 'CLIP Vision loader', 'CLIP-Vision 编码': 'CLIP Vision encode',
+  '风格模型': 'Style model', '参数': 'Parameter', '整数参数': 'Integer', '小数参数': 'Float',
+  '文本参数': 'Text', '多行文本': 'Multiline text', '转接': 'Reroute', '备注': 'Note',
+  '分辨率选择': 'Resolution selector', '图像调整': 'Resize image', '读取图像尺寸': 'Get image size',
+  '通配符处理': 'Wildcard processor', '扩散模型（GGUF）': 'Diffusion model (GGUF)', '超网络': 'Hypernetwork',
+  '正向提示词': 'Positive prompt', '负向提示词': 'Negative prompt', '种子': 'Seed', '步数': 'Steps',
+  '调度器': 'Scheduler',
+  '去噪强度': 'Denoise', '宽': 'Width', '高': 'Height', '时长（帧）': 'Length (frames)',
+  '帧数': 'Frames', '帧率': 'FPS', '时长': 'Duration', '张数': 'Batch size', '图片 1': 'Image 1',
+  '图片 2': 'Image 2', '参考图': 'Reference image', '采样偏移': 'Shift', '基础偏移': 'Base shift',
+  '最大偏移': 'Max shift', '强度': 'Strength', '模型强度': 'Model strength', '文本强度': 'Text strength',
+  '放大倍数': 'Upscale by', '缩放比例': 'Scale by', '倍数': 'Factor', '文件名前缀': 'Filename prefix',
+  '比例': 'Aspect ratio', '设备': 'Device', '注意力优化': 'Attention mode', '量化': 'Quantization',
+  '插值': 'Interpolation', '起始步': 'Start step', '结束步': 'End step', '加噪': 'Add noise',
+  'CLIP 截止层': 'CLIP stop layer', '反转蒙版': 'Invert mask', '裁剪': 'Crop',
+  '插值方式': 'Interpolation type', '画质（CRF）': 'Quality (CRF)', '格式': 'Format',
+  '循环往复': 'Ping-pong', '保存到输出': 'Save to output', '循环次数': 'Loop count',
+  '音质': 'Audio quality', '温度': 'Temperature', '阈值': 'Threshold',
+  '最大加载帧数': 'Max frames', '抽帧间隔': 'Frame stride', '字幕': 'Caption',
+  'VAE 分块': 'VAE tiling', '作用区域': 'Region of interest', '蒙版': 'Masks', '提示词': 'Prompt',
+  '文本编码器 2': 'Text encoder 2', '文本编码器 3': 'Text encoder 3', '文本编码器 4': 'Text encoder 4',
+  '分辨率（百万像素）': 'Resolution (megapixels)', '分辨率': 'Resolution',
+  '比例与分辨率': 'Aspect ratio & resolution', '图片输入': 'Image input',
+  '步数 / CFG': 'Steps / CFG', '种子 / 去噪强度': 'Seed / denoise',
+  '采样器 / 调度器': 'Sampler / scheduler', '文本编码器（CLIP）': 'Text encoder (CLIP)',
+  'ControlNet / 放大模型': 'ControlNet / upscale model', 'LoRA 强度': 'LoRA strength',
+  'LoRA 强度（文本）': 'LoRA strength (text)', '生成张数': 'Batch size',
+  '{label}（{title}）': '{label} ({title})',
+  '子图嵌套超过 4 层（{name}），未展平': 'Subgraph nesting exceeds 4 levels ({name}); not flattened',
+  '子图 {name} 的实例参数数量（{n}）与控件槽位（{m}）不一致，已改用节点内部默认值': 'Subgraph {name}: instance values ({n}) do not match widget slots ({m}); using inner defaults',
+  '子图 {sub} 内 {cls} 被旁路，已按同类型穿通处理': '{cls} inside subgraph {sub} was bypassed; passed through as the same type',
+  '子图 {sub} 内节点 {id} 转换失败已跳过：{err}': 'Node {id} inside subgraph {sub} failed to convert and was skipped: {err}',
+  '嵌套子图 {type} 展平失败已跳过：{err}': 'Nested subgraph {type} failed to flatten and was skipped: {err}',
+  '缺少 {type} 的节点定义（子图 {sub}），节点 {id} 仅保留连线输入': 'Missing node definition for {type} (subgraph {sub}); node {id} keeps only linked inputs',
+  '子图 {sub} 内节点 {id}（{type}）转换失败已跳过：{err}': 'Node {id} ({type}) inside subgraph {sub} failed to convert and was skipped: {err}',
+  '（子图 {name}）': ' (subgraph {name})',
+  '缺少 {type} 的节点定义{where}，节点 {id} 仅保留连线输入': 'Missing node definition for {type}{where}; node {id} keeps only linked inputs',
+  '节点 {id}（{cls}）被旁路，已按同类型穿通处理': 'Node {id} ({cls}) was bypassed; passed through as the same type',
+  '节点 {id}（{type}）转换失败已跳过：{err}': 'Node {id} ({type}) failed to convert and was skipped: {err}',
+  '输入 {name} 指向被静音的节点 #{from}，已移除': 'Input {name} pointed to muted node #{from}; removed',
+  '输入 {name} 的来源（#{from}:{slot}）无法解析，已移除': 'Source of input {name} (#{from}:{slot}) could not be resolved; removed',
+  // 时长 / 上传 / 节点编辑器 / 校验提示
+  '用时 {ms} 毫秒（缓存命中，未重新计算）': 'Took {ms} ms (cache hit, not recomputed)',
+  '用时 {m} 分 {s} 秒': 'Took {m}m {s}s', '用时 {s} 秒': 'Took {s}s',
+  '{m}分{s}秒': '{m}m {s}s', '{s}秒': '{s}s', '压缩中…': 'Compressing…',
+  '新增 {slot}（{type}）': 'New {slot} ({type})',
+  '{cls}（#{id}）· 输出 {slot} [{type}]': '{cls} (#{id}) · output {slot} [{type}]',
+  '节点 #{id} {cls}：{errors}': 'Node #{id} {cls}: {errors}', '；': '; ',
+  '通用': 'Generic', 'MiniMax H3 视频': 'MiniMax H3 Video',
+  '连接状态': 'Connection status', '共 {n} 条': '{n} total',
 };
-
-export function getLang() {
-  return state.settings.lang === 'en' ? 'en' : 'zh';
-}
-
-/** 切换语言（持久化由设置页的 saveSettings 负责）。 */
-export function setLang(lang) {
-  state.settings.lang = lang === 'en' ? 'en' : 'zh';
-}
 
 /** @param {keyof typeof T} key 兼容旧版 camelCase 键 */
 export function t(text) {

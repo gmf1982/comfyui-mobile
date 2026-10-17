@@ -11,6 +11,7 @@ export async function settingsView(container) {
   langSelect.append(el('option', { value: 'en', text: 'English' }));
   langSelect.value = getLang();
   langSelect.addEventListener('change', () => {
+    state.settings.lang = langSelect.value;
     setLang(langSelect.value);
     saveSettings();
     document.documentElement.lang = langSelect.value === 'en' ? 'en' : 'zh-CN';

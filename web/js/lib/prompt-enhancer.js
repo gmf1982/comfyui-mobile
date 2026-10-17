@@ -5,41 +5,103 @@
  * 翻译，未命中的词原样保留并提示手动润色。
  * 随机词池让同一句提示词可以"换一版"，输出始终可再手改。
  */
+import { getLang } from './lang.js';
 
 // ---------------- 模型识别 ----------------
 
-/** 模型档案：lang 决定增强输出语言；label 用于界面展示。 */
+/** 模型档案：label 用于界面展示；增强输出语言由输入语言决定（见 promptLang）。 */
 export const MODEL_PROFILES = {
-  qwen: { label: 'Qwen-Image 2.1', lang: 'zh' },
-  zimage: { label: 'Z-Image', lang: 'zh' },
-  krea: { label: 'FLUX.2 Krea', lang: 'en' },
-  h3: { label: 'MiniMax H3 视频', lang: 'zh' },
-  generic: { label: '通用', lang: 'zh' },
+  qwen: { label: 'Qwen-Image 2.1' },
+  zimage: { label: 'Z-Image' },
+  krea: { label: 'FLUX.2 Krea' },
+  flux: { label: 'FLUX' },
+  sdxl: { label: 'SDXL' },
+  sd3: { label: 'SD3 / SD3.5' },
+  sd15: { label: 'SD 1.5' },
+  h3: { label: 'MiniMax H3 视频' },
+  wan: { label: 'Wan Video' },
+  hunyuan: { label: 'Hunyuan Video' },
+  ltx: { label: 'LTX Video' },
+  mochi: { label: 'Mochi Video' },
+  cogvideo: { label: 'CogVideo' },
+  generic: { label: '通用' },
 };
 
-/** 识别顺序即优先级：视频工作流也可能引用图片文件，h3 先判。 */
+/** 视频模型：这些工作流即使没有 LoadImage 也按视频模板增强。 */
+const VIDEO_PROFILES = new Set(['h3', 'wan', 'hunyuan', 'ltx', 'mochi', 'cogvideo']);
+
+/** 识别顺序即优先级：Krea 先于 FLUX，视频模型先于图片模型。 */
 const DETECT_RULES = [
   ['h3', /minimax|mmh3|[_-]h3|h3[_-]/i],
   ['krea', /krea/i],
   ['qwen', /qwen/i],
   ['zimage', /z[-_ ]?image/i],
+  ['flux', /flux/i],
+  ['sdxl', /sdxl|sd[_-]?xl/i],
+  ['sd3', /sd[_-]?3(?:\.?5)?/i],
+  ['sd15', /sd[_-]?1\.?5|v1-5/i],
+  ['wan', /wan[_-]?(?:2|video|\d)|[_-]wan\b/i],
+  ['hunyuan', /hunyuan/i],
+  ['ltx', /ltx[_-]?video|\bltx\b/i],
+  ['mochi', /mochi/i],
+  ['cogvideo', /cogvideo/i],
 ];
 
-/** 扫描工作流 JSON（模型文件名/节点类名）判断使用中的模型。 */
-export function detectModelProfile(wfJson) {
-  const s = JSON.stringify(wfJson ?? '').toLowerCase();
+/** 参与模型识别的输入名：只看模型文件名，不扫提示词正文，避免 “flux of light” 误判。 */
+const MODEL_INPUT_RE = /^(ckpt_name|unet_name|model_name|lora_name|vae_name|clip_name\d*|control_net_name|style_model_name|upscale_model_name|hypernetwork_name|photomaker_name)$/;
+
+/** 从 API 工作流提取节点类名与模型文件名。 */
+function workflowHints(wfJson) {
+  const classTypes = [];
+  const files = [];
+  if (wfJson && typeof wfJson === 'object') {
+    for (const node of Object.values(wfJson)) {
+      if (!node || typeof node !== 'object' || Array.isArray(node)) continue;
+      if (typeof node.class_type === 'string') classTypes.push(node.class_type);
+      for (const [key, value] of Object.entries(node.inputs ?? {})) {
+        if (MODEL_INPUT_RE.test(key) && typeof value === 'string') files.push(value);
+      }
+    }
+  }
+  return { classTypes, files };
+}
+
+/** 当前表单缓存里只取模型相关字段（fieldKey 形如 `3:ckpt_name`）。 */
+function paramsFiles(params) {
+  const files = [];
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (typeof value !== 'string') continue;
+    const inputName = key.includes(':') ? key.slice(key.indexOf(':') + 1) : key;
+    if (MODEL_INPUT_RE.test(inputName)) files.push(value);
+  }
+  return files;
+}
+
+/**
+ * 扫描工作流 + 当前表单值判断使用中的模型。
+ * 模型文件名优先于节点类名（避免 FluxGuidance 之类节点盖过实际 checkpoint）。
+ * @param {unknown} wfJson API 格式工作流
+ * @param {Record<string, unknown>} [params] 当前表单缓存（fieldKey → value）
+ */
+export function detectModelProfile(wfJson, params) {
+  const { classTypes, files } = workflowHints(wfJson);
+  const fileSource = [...files, ...paramsFiles(params)].join(' ').toLowerCase();
+  const classSource = classTypes.join(' ').toLowerCase();
   for (const [key, re] of DETECT_RULES) {
-    if (re.test(s)) return key;
+    if (re.test(fileSource)) return key;
+  }
+  for (const [key, re] of DETECT_RULES) {
+    if (re.test(classSource)) return key;
   }
   return 'generic';
 }
 
-/** 工作流里有图片输入节点 → 图生图/编辑；视频模型 → 视频；其余文生图。 */
+/** 视频模型 → 视频；有图片输入节点 → 图生图/编辑；其余文生图。 */
 export function detectMode(wfJson, profileKey) {
-  if (profileKey === 'h3') return 'video';
-  const s = JSON.stringify(wfJson ?? '');
-  // 不写 "return /re/i.test(s)"：return 后的正则会绕过前端守卫测试的剥离启发式
-  const hasImageInput = /loadimage/i.test(s);
+  if (VIDEO_PROFILES.has(profileKey)) return 'video';
+  const { classTypes } = workflowHints(wfJson);
+  // 用 includes 而不是 `=> /re/i`：正则紧跟在箭头后会被前端守卫测试的剥离启发式漏掉
+  const hasImageInput = classTypes.some((name) => name.toLowerCase().includes('loadimage'));
   return hasImageInput ? 'edit' : 't2i';
 }
 
@@ -170,6 +232,17 @@ const EN_POOLS = {
   ],
 };
 
+const MOOD_EN = ['serene atmosphere', 'a strong sense of story', 'dreamlike and beautiful', 'an authentic documentary feel', 'a calm, soothing mood'];
+
+/** 英文视频词池：与中文模板同结构，供英文输入使用。 */
+const VIDEO_MOTION_EN = {
+  animal: ['it gently wags its tail and walks slowly', 'it stretches lazily', 'it turns its head toward the distance, ears twitching'],
+  person: ['she turns slowly toward the camera', 'brushing hair aside with a slight smile', 'walking forward slowly as clothes sway in the wind'],
+  scene: ['clouds drift slowly as light moves across the ground', 'fine ripples spread across the water', 'leaves sway in the wind as light flickers through'],
+  generic: ['the subject moves slowly and continuously with subtle motion', 'the subject makes small natural movements with smooth posture'],
+};
+const VIDEO_CAMERA_EN = ['the camera slowly pushes in', 'the camera slowly pulls back', 'the camera slowly orbits the subject', 'static tripod shot, stable frame', 'the camera follows the subject with a slight drift'];
+
 // ---------------- 视频词池（MiniMax H3） ----------------
 
 const VIDEO_MOTION_ZH = {
@@ -190,6 +263,14 @@ const firstSegment = (text) => {
 const HAS_CN_RE = /[\u4e00-\u9fa5]/;
 
 const hasChinese = (s) => HAS_CN_RE.test(s);
+
+/** 增强输出语言：有中文按中文，纯英文按英文；无字母时跟随界面语言。 */
+export function promptLang(text) {
+  const s = String(text ?? '');
+  if (hasChinese(s)) return 'zh';
+  if (/[A-Za-z]/.test(s)) return 'en';
+  return getLang();
+}
 
 /** 贪心最长匹配翻译：整段命中优先；返回译文与是否仍有中文残留。 */
 function translateToEn(text) {
@@ -245,6 +326,26 @@ function enhanceT2I(raw, rand) {
   return `${subject}，${parts.join('，')}。`;
 }
 
+/** 原文已写明环境时不再补环境句，避免 “on a windowsill … on a sunlit windowsill”。 */
+const EN_SCENE_RE = /windowsill|room|beach|forest|street|city|garden|mountain|lake|field|desert|night|sunset|sunrise|sky|indoor|outdoor|meadow|studio/i;
+
+/** 文生图英文版：保留原主体，补细节/动作/环境/光线/构图/色调/氛围/画质。 */
+function enhanceT2IEn(raw, rand) {
+  const subject = firstSegment(raw);
+  const cls = classify(raw.toLowerCase(), EN_POOLS.classes);
+  const parts = dedupe(raw, [
+    pick(cls.detail, rand),
+    pick(cls.action, rand),
+    ...(EN_SCENE_RE.test(raw) ? [] : [pick(cls.env, rand)]),
+    pick(EN_POOLS.lighting, rand),
+    pick(EN_POOLS.composition, rand),
+    pick(EN_POOLS.tone, rand),
+    pick(MOOD_EN, rand),
+    pick(EN_POOLS.quality, rand),
+  ]);
+  return `${subject}, ${parts.join(', ')}.`;
+}
+
 /** 图生图/编辑：识别"替换/换成/改成"与"去掉/删除"两类句式 → 改动 + 其余保持不变的模板。 */
 function enhanceEdit(raw) {
   const t = raw.trim();
@@ -288,6 +389,22 @@ function enhanceVideo(raw, rand) {
   return `${subject}，${parts[0]}。${parts.slice(1).join('，')}。整体节奏舒缓，动作自然连贯。`;
 }
 
+/** 视频英文版：主体 + 动作 + 镜头 + 光线/氛围。 */
+function enhanceVideoEn(raw, rand) {
+  const subject = firstSegment(raw);
+  const lower = raw.toLowerCase();
+  const clsKey = /cat|dog|rabbit|bird|tiger|lion|fox|deer|horse|panda|wolf|animal|pet/.test(lower) ? 'animal'
+    : /girl|boy|woman|man|person|child|model|dancer|elderly/.test(lower) ? 'person'
+      : /city|forest|beach|snow|street|sky|lake|mountain|sunrise|sunset|night/.test(lower) ? 'scene' : 'generic';
+  const parts = dedupe(raw, [
+    pick(VIDEO_MOTION_EN[clsKey] ?? VIDEO_MOTION_EN.generic, rand),
+    pick(VIDEO_CAMERA_EN, rand),
+    pick(EN_POOLS.lighting, rand),
+    pick(MOOD_EN, rand),
+  ]);
+  return `${subject}, ${parts.join(', ')}. Gentle pacing, natural continuous motion.`;
+}
+
 /** Krea：英文自然段。先尽力翻译原文，再套英文词池；翻不出中文时原样保留并提示。 */
 function enhanceKrea(raw, rand) {
   const subject = firstSegment(raw);
@@ -316,20 +433,23 @@ export function enhancePrompt({ text, profileKey = 'generic', mode }) {
   const raw = String(text ?? '').trim();
   if (!raw) return { text: '', notes: [], profileKey, mode };
   const rand = new Set();
-  const lang = MODEL_PROFILES[profileKey]?.lang ?? 'zh';
+  const lang = promptLang(raw);
   let result;
   const notes = [];
   if (mode === 'video') {
-    result = enhanceVideo(raw, rand);
+    result = lang === 'en' ? enhanceVideoEn(raw, rand) : enhanceVideo(raw, rand);
     notes.push('已按视频模板增强（主体/动作/镜头/氛围）');
   } else if (mode === 'edit') {
-    result = profileKey === 'krea' ? enhanceEditEn(raw, rand) : enhanceEdit(raw);
+    result = (profileKey === 'krea' || lang === 'en') ? enhanceEditEn(raw, rand) : enhanceEdit(raw);
     notes.push('已套用"只改此处、其余保持不变"编辑模板');
     if (profileKey === 'krea' && hasChinese(result)) notes.push('部分词不在内置英词库中，已原样保留，请手动润色');
-  } else if (lang === 'en') {
+  } else if (profileKey === 'krea') {
     const r = enhanceKrea(raw, rand);
     result = r.text;
     notes.push(...r.notes);
+  } else if (lang === 'en') {
+    result = enhanceT2IEn(raw, rand);
+    notes.push('已按当前模型补充细节/环境/光线/构图/画质');
   } else {
     result = enhanceT2I(raw, rand);
     notes.push('已按当前模型补充细节/环境/光线/构图/画质');

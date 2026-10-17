@@ -232,7 +232,7 @@ export function fieldEditor(field, onChange) {
 
     const setValue = (name) => {
       current = name;
-      valueBtn.querySelector('span').textContent = name || ('选择' + mediaLabel + '…');
+      valueBtn.querySelector('span').textContent = name || (t('选择') + mediaLabel + '…');
       onChange(field.key, name);
     };
 
@@ -268,15 +268,15 @@ export function fieldEditor(field, onChange) {
           targetMB: state.settings.uploadTargetMB ?? 0.9,
           onProgress: (sent, total) => {
             if (!total) {
-              lastProgress = '压缩中…';
+              lastProgress = t('压缩中…');
             } else {
-              lastProgress = humanSize(total) + ' · 上传 ' + Math.round((sent / total) * 100) + '%';
+              lastProgress = humanSize(total) + ' · ' + t('上传') + ' ' + Math.round((sent / total) * 100) + '%';
             }
             status.textContent = lastProgress;
           },
         });
         const note = res.compressed
-          ? humanSize(res.originalSize) + ' → ' + humanSize(res.size) + '（已压缩）'
+          ? humanSize(res.originalSize) + ' → ' + humanSize(res.size) + t('（已压缩）')
           : humanSize(res.size);
         if (!options.includes(res.name)) options.unshift(res.name);
         setValue(res.name);
@@ -514,7 +514,7 @@ export function fieldEditor(field, onChange) {
         info.textContent = t('当前：') + res.name;
       } catch (err) {
         info.textContent = field.value ? t('当前：') + field.value : t('未选择');
-        toast(`上传失败：${err.message}`);
+        toast(t('上传失败：') + err.message);
       }
     });
     const btn = el('button', { class: 'btn small', text: t('选择图片 / 拍照') }, input);

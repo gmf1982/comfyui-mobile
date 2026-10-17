@@ -12,14 +12,16 @@
  * v29：桌面图标按原图仅缩放重生成（不裁剪），manifest 移除 maskable 声明，避免安卓启动器放大裁切丢底板边框。
  * v30：桌面图标改用 994x994 一比一原图直接缩放（无透明补边，消除启动器衬出的白边）。
  * v32：i18n 补齐缺失词条（更多页显存清理卡片、运行页切换失败提示），新增词典覆盖测试防回归。
+ * v33：运行页/节点图标签与英文提示词增强；首次启动按浏览器语言选择中英文。
  */
-const CACHE = 'cm-shell-v32';
+const CACHE = 'cm-shell-v33';
 const SHELL = [
   '/',
   '/index.html',
   '/css/app.css',
   '/js/app.js',
   '/js/lib/api.js',
+  '/js/lib/lang.js',
   '/js/lib/i18n.js',
   '/js/lib/media.js',
   '/js/lib/state.js',

@@ -351,7 +351,8 @@ export async function runView(container) {
     );
     for (const nodeId of keys) {
       const e = nodeErrors[nodeId];
-      errCard.append(el('div', { class: 'muted', text: `节点 #${nodeId} ${e?.class_type ?? ''}：${e?.errors?.map((x) => x.message).join('；') ?? JSON.stringify(e)}` }));
+      const detail = e?.errors?.map((x) => x.message).join(t('；')) ?? JSON.stringify(e);
+      errCard.append(el('div', { class: 'muted', text: tf('节点 #{id} {cls}：{errors}', { id: nodeId, cls: e?.class_type ?? '', errors: detail }) }));
       for (const err of e?.errors ?? []) {
         const fix = parseValueNotInList(err, e?.class_type);
         if (fix) {

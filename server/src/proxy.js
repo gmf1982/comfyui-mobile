@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { mimeOfFilename } from './media.js';
+import { reqLang, pick } from './lang.js';
 
 const REQ_HEADER_ALLOW = new Set([
   'content-type', 'content-length', 'range', 'accept', 'accept-encoding',
@@ -49,6 +50,7 @@ export function createUpstreamRequester(cfg) {
    * @param {import('node:http').ServerResponse} res
    */
   return function proxyRequest(req, res) {
+    const lang = reqLang(req);
     const headers = {};
     for (const [name, value] of Object.entries(req.headers)) {
       if (REQ_HEADER_ALLOW.has(name.toLowerCase())) headers[name] = value;
@@ -57,7 +59,7 @@ export function createUpstreamRequester(cfg) {
     const precheck = Number.isFinite(declaredLength) && declaredLength > limitBytes;
     if (precheck) {
       res.writeHead(413, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ error: 'payload_too_large', message: `上传超过 ${cfg.maxUploadMB}MB 限制` }));
+      res.end(JSON.stringify({ error: 'payload_too_large', message: pick(lang, `上传超过 ${cfg.maxUploadMB}MB 限制`, `Upload exceeds the ${cfg.maxUploadMB} MB limit`) }));
       return;
     }
 
@@ -78,7 +80,7 @@ export function createUpstreamRequester(cfg) {
         upstreamReq.destroy();
         if (!res.headersSent) {
           res.writeHead(413, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'payload_too_large', message: `上传超过 ${cfg.maxUploadMB}MB 限制` }));
+          res.end(JSON.stringify({ error: 'payload_too_large', message: pick(lang, `上传超过 ${cfg.maxUploadMB}MB 限制`, `Upload exceeds the ${cfg.maxUploadMB} MB limit`) }));
         } else {
           res.destroy();
         }
@@ -146,7 +148,7 @@ export function createUpstreamRequester(cfg) {
       res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
         error: 'upstream_unreachable',
-        message: `无法连接 ComfyUI（${cfg.upstream}）：${err.message}`,
+        message: pick(lang, `无法连接 ComfyUI（${cfg.upstream}）：${err.message}`, `Cannot reach ComfyUI (${cfg.upstream}): ${err.message}`),
       }));
     });
   };

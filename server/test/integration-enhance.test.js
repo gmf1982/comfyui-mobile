@@ -32,6 +32,17 @@ function post(base, body) {
 async function stubLlm() {
   const seen = [];
   const server = http.createServer((req, res) => {
+    if (req.method === 'GET') {
+      // 实时探测：不同 apiKey 只看到各自的模型，模拟两个独立端点
+      if (req.url === '/v1/models') {
+        const local = String(req.headers.authorization ?? '').includes('key-local');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ data: [{ id: local ? 'gemma3:270m' : 'glm-4.7-flash' }] }));
+        return;
+      }
+      res.writeHead(404).end();
+      return;
+    }
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
@@ -41,7 +52,14 @@ async function stubLlm() {
     });
   });
   const port = await listen(server);
-  return { port, seen, close: () => new Promise((r) => server.close(r)) };
+  return {
+    port,
+    seen,
+    close: () => {
+      server.closeAllConnections?.();
+      return new Promise((r) => server.close(r));
+    },
+  };
 }
 
 test('models 多模型列表：按 name 选择对应端点（不同 apiKey 分开走）', async (t) => {
@@ -90,10 +108,11 @@ test('未指定模型时用 default；GET /gw/enhance-models 不返回 baseUrl/a
   assert.equal(list.status, 200);
   const listData = await list.json();
   assert.equal(listData.enabled, true);
-  assert.deepEqual(listData.models, [
+  assert.deepEqual(listData.models.map(({ name, model }) => ({ name, model })), [
     { name: '本地gemma', model: 'gemma3:270m' },
     { name: 'GLM', model: 'glm-4.7-flash' },
-  ], '列表只含 name/model，无端点与密钥');
+  ], '列表只含 name/model/route，无端点与密钥');
+  assert.ok(listData.models.every((m) => m.key && m.route !== undefined), '应带路由下标供增强请求使用');
   assert.equal(JSON.stringify(listData).includes('baseUrl'), false, '绝不泄露 baseUrl');
   assert.equal(JSON.stringify(listData).includes('apiKey'), false, '绝不泄露 apiKey');
 });

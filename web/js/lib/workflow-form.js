@@ -3,6 +3,7 @@
  * 纯逻辑模块，无 DOM 依赖，可在 Node 中直接单元测试。
  */
 import { extType } from './media.js';
+import { t, tf } from './i18n.js';
 
 export const SAMPLER_CLASSES = ['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'];
 
@@ -32,7 +33,7 @@ export const MODEL_WIDGET_FOLDERS = {
   photomaker_name: ['photomaker'],
 };
 
-const MODEL_LABELS = {
+export const MODEL_LABELS = {
   ckpt_name: '大模型', unet_name: '扩散模型', model_name: '扩散模型', lora_name: 'LoRA',
   vae_name: 'VAE', clip_name: '文本编码器', clip_name2: '文本编码器 2', clip_name3: '文本编码器 3',
   clip_name4: '文本编码器 4', control_net_name: 'ControlNet', style_model_name: '风格模型',
@@ -77,7 +78,7 @@ export function modelRowKeyOf(field) {
 }
 
 /** 常见节点类的直观中文名（高级参数分组标题等）。 */
-const CLASS_NAMES_ZH = {
+export const CLASS_NAMES_ZH = {
   KSampler: '采样器', KSamplerAdvanced: '采样器（高级）', SamplerCustom: '自定义采样',
   SamplerCustomAdvanced: '自定义采样（高级）', KSamplerSelect: '采样器选择', SchedulerSelector: '调度器选择',
   CheckpointLoaderSimple: '大模型', UNETLoader: '扩散模型', CLIPLoader: '文本编码器', CLIPLoader: '文本编码器',
@@ -148,9 +149,9 @@ export function mediaKindOfOptions(options) {
   return null;
 }
 
-/** 展示用节点类名：有中文名用中文名，否则保留类名。 */
+/** 展示用节点类名：有翻译用翻译，否则保留类名。 */
 export function friendlyClassName(classType) {
-  return CLASS_NAMES_ZH[classType] ?? classType;
+  return t(CLASS_NAMES_ZH[classType] ?? classType);
 }
 
 /** 展示用节点 id：子图展平后的 75_61 显示为 61。 */
@@ -244,7 +245,7 @@ function inferKind(inputName, value, def) {
   return 'other';
 }
 
-const FIELD_LABELS = {
+export const FIELD_LABELS = {
   text: '提示词', prompt: '提示词', positive: '正向提示词', negative_prompt: '负向提示词',
   seed: '种子', noise_seed: '种子', steps: '步数', cfg: 'CFG', denoise: '去噪强度',
   sampler_name: '采样器', scheduler: '调度器', width: '宽', height: '高', length: '时长（帧）',
@@ -267,7 +268,7 @@ const FIELD_LABELS = {
 };
 
 function fieldLabel(inputName) {
-  return FIELD_LABELS[inputName] ?? inputName;
+  return t(FIELD_LABELS[inputName] ?? inputName);
 }
 
 const MEDIA_LABELS = { image: '图片', video: '视频', audio: '音频' };
@@ -291,7 +292,7 @@ function makeField(node, inputName, value, def, kind, overrides = {}) {
   if (kind === 'scheduler') field.options = dedupePreserve([String(value), ...(comboOptions(def) ?? SCHEDULERS)]);
   if (kind === 'model') {
     field.folders = MODEL_WIDGET_FOLDERS[inputName];
-    field.label = overrides.label ?? (MODEL_LABELS[inputName] ?? inputName);
+    field.label = overrides.label ?? t(MODEL_LABELS[inputName] ?? inputName);
   }
   if (kind === 'toggle' && typeof value === 'number') field.value = value !== 0;
   return field;
@@ -326,8 +327,8 @@ export function buildFormModel({ workflow, schemas = {} }) {
   const NEG_TEXT_INPUT_NAMES = ['text', 'negative_prompt', 'negative'];
   for (const sampler of samplers) {
     for (const [role, inputName, label, names] of [
-      ['positive', 'positive', '正向提示词', TEXT_INPUT_NAMES],
-      ['negative', 'negative', '负向提示词', NEG_TEXT_INPUT_NAMES],
+      ['positive', 'positive', t('正向提示词'), TEXT_INPUT_NAMES],
+      ['negative', 'negative', t('负向提示词'), NEG_TEXT_INPUT_NAMES],
     ]) {
       if (heroes.some((h) => h.role === role)) continue;
       const src = linkSource(sampler.id, inputName);
@@ -349,12 +350,12 @@ export function buildFormModel({ workflow, schemas = {} }) {
         const h = latent.inputs?.height;
         if (typeof w === 'number' && typeof h === 'number') {
           // 宽高是数值：直接作为主参数
-          heroes.push({ key: `${latent.id}:width`, role: 'resolution', nodeId: latent.id, inputName: 'width', kind: 'int', label: '宽', value: w, min: 0, max: 16384, step: 8 });
-          heroes.push({ key: `${latent.id}:height`, role: 'resolution', nodeId: latent.id, inputName: 'height', kind: 'int', label: '高', value: h, min: 0, max: 16384, step: 8 });
+          heroes.push({ key: `${latent.id}:width`, role: 'resolution', nodeId: latent.id, inputName: 'width', kind: 'int', label: t('宽'), value: w, min: 0, max: 16384, step: 8 });
+          heroes.push({ key: `${latent.id}:height`, role: 'resolution', nodeId: latent.id, inputName: 'height', kind: 'int', label: t('高'), value: h, min: 0, max: 16384, step: 8 });
           used.add(`${latent.id}:width`);
           used.add(`${latent.id}:height`);
           if (typeof latent.inputs.batch_size === 'number') {
-            heroes.push({ key: `${latent.id}:batch_size`, role: 'batch', nodeId: latent.id, inputName: 'batch_size', kind: 'int', label: '张数', value: latent.inputs.batch_size, min: 1, max: 64, step: 1 });
+            heroes.push({ key: `${latent.id}:batch_size`, role: 'batch', nodeId: latent.id, inputName: 'batch_size', kind: 'int', label: t('张数'), value: latent.inputs.batch_size, min: 1, max: 64, step: 1 });
             used.add(`${latent.id}:batch_size`);
           }
         } else if (Array.isArray(w) && Array.isArray(h) && String(w[0]) === String(h[0])) {
@@ -367,14 +368,14 @@ export function buildFormModel({ workflow, schemas = {} }) {
               if (!/aspect|ratio/i.test(inputName)) continue;
               const def = schemaInputDef(schemas[src.class_type], inputName);
               if (!comboOptions(def)) continue;
-              heroes.push(makeField(src, inputName, value, def, 'combo', { role: 'resolution', label: '比例' }));
+              heroes.push(makeField(src, inputName, value, def, 'combo', { role: 'resolution', label: t('比例') }));
               used.add(`${src.id}:${inputName}`);
               lifted = true;
             }
             for (const [inputName, value] of Object.entries(src.inputs ?? {})) {
               if (typeof value !== 'number' || used.has(`${src.id}:${inputName}`)) continue;
               if (!/mega|pixel/i.test(inputName)) continue;
-              heroes.push({ key: `${src.id}:${inputName}`, role: 'resolution', nodeId: src.id, inputName, kind: 'float', label: '分辨率（百万像素）', value, min: 0.1, max: 16, step: 0.05 });
+              heroes.push({ key: `${src.id}:${inputName}`, role: 'resolution', nodeId: src.id, inputName, kind: 'float', label: t('分辨率（百万像素）'), value, min: 0.1, max: 16, step: 0.05 });
               used.add(`${src.id}:${inputName}`);
               lifted = true;
             }
@@ -382,11 +383,11 @@ export function buildFormModel({ workflow, schemas = {} }) {
               const resName = Object.keys(src.inputs ?? {}).find((k) => /resolution/i.test(k) && typeof src.inputs[k] === 'string');
               if (resName) {
                 const def = schemaInputDef(schemas[src.class_type], resName);
-                heroes.push(makeField(src, resName, src.inputs[resName], def, 'combo', { role: 'resolution', label: '分辨率' }));
+                heroes.push(makeField(src, resName, src.inputs[resName], def, 'combo', { role: 'resolution', label: t('分辨率') }));
                 used.add(`${src.id}:${resName}`);
               } else if (typeof src.inputs?.width === 'number' && typeof src.inputs?.height === 'number') {
-                heroes.push({ key: `${src.id}:width`, role: 'resolution', nodeId: src.id, inputName: 'width', kind: 'int', label: '宽', value: src.inputs.width, min: 0, max: 16384, step: 8 });
-                heroes.push({ key: `${src.id}:height`, role: 'resolution', nodeId: src.id, inputName: 'height', kind: 'int', label: '高', value: src.inputs.height, min: 0, max: 16384, step: 8 });
+                heroes.push({ key: `${src.id}:width`, role: 'resolution', nodeId: src.id, inputName: 'width', kind: 'int', label: t('宽'), value: src.inputs.width, min: 0, max: 16384, step: 8 });
+                heroes.push({ key: `${src.id}:height`, role: 'resolution', nodeId: src.id, inputName: 'height', kind: 'int', label: t('高'), value: src.inputs.height, min: 0, max: 16384, step: 8 });
                 used.add(`${src.id}:width`);
                 used.add(`${src.id}:height`);
               }
@@ -403,7 +404,7 @@ export function buildFormModel({ workflow, schemas = {} }) {
       const resName = Object.keys(node.inputs ?? {}).find((k) => /^resolution$/i.test(k) && typeof node.inputs[k] === 'string');
       if (!resName || used.has(`${node.id}:${resName}`)) continue;
       const def = schemaInputDef(schemas[node.class_type], resName);
-      heroes.push(makeField(node, resName, node.inputs[resName], def, 'combo', { role: 'resolution', label: '分辨率' }));
+      heroes.push(makeField(node, resName, node.inputs[resName], def, 'combo', { role: 'resolution', label: t('分辨率') }));
       used.add(`${node.id}:${resName}`);
       break;
     }
@@ -422,12 +423,12 @@ export function buildFormModel({ workflow, schemas = {} }) {
       used.add(`${firstSampler.id}:${inputName}`);
     };
     const seedName = 'seed' in firstSampler.inputs ? 'seed' : ('noise_seed' in firstSampler.inputs ? 'noise_seed' : null);
-    if (seedName) addHero('seed', seedName, '种子', 'seed');
-    addHero('steps', 'steps', '步数', 'int', { min: 1, max: 200, step: 1 });
+    if (seedName) addHero('seed', seedName, t('种子'), 'seed');
+    addHero('steps', 'steps', t('步数'), 'int', { min: 1, max: 200, step: 1 });
     addHero('cfg', 'cfg', 'CFG', 'float', { min: 0, max: 100, step: 0.1 });
-    addHero('sampler', 'sampler_name', '采样器', 'sampler');
-    addHero('scheduler', 'scheduler', '调度器', 'scheduler');
-    addHero('denoise', 'denoise', '去噪强度', 'float', { min: 0, max: 1, step: 0.01 });
+    addHero('sampler', 'sampler_name', t('采样器'), 'sampler');
+    addHero('scheduler', 'scheduler', t('调度器'), 'scheduler');
+    addHero('denoise', 'denoise', t('去噪强度'), 'float', { min: 0, max: 1, step: 0.01 });
   }
 
   // 媒体输入（图片/视频/音频）：所有节点上的媒体文件 combo 都提为主参数，支持上传
@@ -440,9 +441,9 @@ export function buildFormModel({ workflow, schemas = {} }) {
         ?? (/^(LoadImage|LoadImageMask|LoadImageOutput)$/.test(node.class_type) && inputName === 'image' ? 'image' : null);
       if (!kindHint) continue;
       const seq = ++mediaSeq[kindHint];
-      const mediaLabel = MEDIA_LABELS[kindHint];
+      const mediaLabel = t(MEDIA_LABELS[kindHint]);
       const nodeTitle = node.title && node.title !== node.class_type ? node.title : '';
-      const label = nodeTitle ? `${mediaLabel}（${nodeTitle}）` : (seq === 1 ? mediaLabel : `${mediaLabel} ${seq}`);
+      const label = nodeTitle ? tf('{label}（{title}）', { label: mediaLabel, title: nodeTitle }) : (seq === 1 ? mediaLabel : `${mediaLabel} ${seq}`);
       heroes.push({
         key: `${node.id}:${inputName}`, role: 'image', nodeId: node.id, inputName, kind: 'media',
         mediaKind: kindHint, options, label, value, def: null,
@@ -473,7 +474,7 @@ export function buildFormModel({ workflow, schemas = {} }) {
       if (typeof value !== 'number' || used.has(`${node.id}:${inputName}`)) continue;
       heroes.push({
         key: `${node.id}:${inputName}`, role: 'lora.strength', nodeId: node.id, inputName,
-        kind: 'float', label: inputName === 'strength_clip' ? 'LoRA 强度（文本）' : 'LoRA 强度',
+        kind: 'float', label: t(inputName === 'strength_clip' ? 'LoRA 强度（文本）' : 'LoRA 强度'),
         value, min: -5, max: 5, step: 0.01,
       });
       used.add(`${node.id}:${inputName}`);
@@ -485,7 +486,7 @@ export function buildFormModel({ workflow, schemas = {} }) {
     const node = nodes.find((n) => typeof n.inputs?.text === 'string' || typeof n.inputs?.prompt === 'string');
     if (node) {
       const name = typeof node.inputs.text === 'string' ? 'text' : 'prompt';
-      heroes.push({ key: `${node.id}:${name}`, role: 'positive', nodeId: node.id, inputName: name, kind: 'textarea', label: '提示词', value: node.inputs[name] });
+      heroes.push({ key: `${node.id}:${name}`, role: 'positive', nodeId: node.id, inputName: name, kind: 'textarea', label: t('提示词'), value: node.inputs[name] });
       used.add(`${node.id}:${name}`);
     }
   }
@@ -563,7 +564,7 @@ export const MODEL_FAMILY_UNIT_KEY = 'model.family';
 /** @param {string} key 行 key（角色 key 或 `group:<classType>`） */
 export function heroRowTitle(key) {
   if (key.startsWith('group:')) return null;
-  return ROLE_ROW_TITLES[key] ?? key;
+  return t(ROLE_ROW_TITLES[key] ?? key);
 }
 
 /**
@@ -587,7 +588,7 @@ export function buildRunLayout(heroes, groups, saved = {}) {
   const familyUnit = {
     key: MODEL_FAMILY_UNIT_KEY,
     fields: familyRows.flatMap((r) => r.fields),
-    title: '模型',
+    title: t('模型'),
     isFamily: true,
   };
   const otherRows = roleRows.filter((r) => !MODEL_FAMILY_KEYS.includes(r.key));
@@ -953,7 +954,7 @@ export function convertUiToApi(uiJson, schemas = {}) {
 
   function flattenSubgraph(node, sg, depth, idPrefix, linkMap, parentOuterValue) {
     if (depth > 4) {
-      warnings.push(`子图嵌套超过 4 层（${sg.name ?? node.type}），未展平`);
+      warnings.push(tf('子图嵌套超过 4 层（{name}），未展平', { name: sg.name ?? node.type }));
       return;
     }
     const prefix = `${idPrefix}${node.id}_`;
@@ -1017,7 +1018,9 @@ export function convertUiToApi(uiJson, schemas = {}) {
         if (name !== undefined) widgetValueByName[name] = wv[pos];
       });
     } else if (wv.length > 0) {
-      warnings.push(`子图 ${sg.name ?? node.type} 的实例参数数量（${wv.length}）与控件槽位（${widgetSlotIndexes.length}）不一致，已改用节点内部默认值`);
+      warnings.push(tf('子图 {name} 的实例参数数量（{n}）与控件槽位（{m}）不一致，已改用节点内部默认值', {
+        name: sg.name ?? node.type, n: wv.length, m: widgetSlotIndexes.length,
+      }));
     }
     // 子图虚拟输入（-10）→ 外层该槽位的连线值或 widget 值；嵌套时递归透传到更外层
 
@@ -1031,10 +1034,10 @@ export function convertUiToApi(uiJson, schemas = {}) {
       if (inner.mode === 4 || PASS_THROUGH_TYPES.has(inner.type)) {
         try {
           const { inputs } = resolveNodeInputs(inner, innerLinks, outerInputValue, (id) => `${prefix}${id}`);
-          if (inner.mode === 4) warnings.push(`子图 ${sgTitle} 内 ${friendlyClassName(inner.type)} 被旁路，已按同类型穿通处理`);
+          if (inner.mode === 4) warnings.push(tf('子图 {sub} 内 {cls} 被旁路，已按同类型穿通处理', { sub: sgTitle, cls: friendlyClassName(inner.type) }));
           buildBypassInfo(newId, inner.type, inputs);
         } catch (err) {
-          warnings.push(`子图 ${sgTitle} 内节点 ${inner.id} 转换失败已跳过：${err.message}`);
+          warnings.push(tf('子图 {sub} 内节点 {id} 转换失败已跳过：{err}', { sub: sgTitle, id: inner.id, err: err.message }));
         }
         continue;
       }
@@ -1049,7 +1052,7 @@ export function convertUiToApi(uiJson, schemas = {}) {
         try {
           flattenSubgraph(inner, nestedSg, depth + 1, prefix, innerLinks, outerInputValue);
         } catch (err) {
-          warnings.push(`嵌套子图 ${inner.type} 展平失败已跳过：${err.message}`);
+          warnings.push(tf('嵌套子图 {type} 展平失败已跳过：{err}', { type: inner.type, err: err.message }));
         }
         continue;
       }
@@ -1059,11 +1062,11 @@ export function convertUiToApi(uiJson, schemas = {}) {
         if (schema) {
           applyWidgetValues(inputs, schema, inner.widgets_values, linkedNames, inner.inputs);
         } else {
-          warnings.push(`缺少 ${inner.type} 的节点定义（子图 ${sgTitle}），节点 ${newId} 仅保留连线输入`);
+          warnings.push(tf('缺少 {type} 的节点定义（子图 {sub}），节点 {id} 仅保留连线输入', { type: inner.type, sub: sgTitle, id: newId }));
         }
         workflow[newId] = { class_type: inner.type, inputs, _meta: { title: `${sgTitle}/${inner.title ?? inner.type}` } };
       } catch (err) {
-        warnings.push(`子图 ${sgTitle} 内节点 ${inner.id}（${inner.type}）转换失败已跳过：${err.message}`);
+        warnings.push(tf('子图 {sub} 内节点 {id}（{type}）转换失败已跳过：{err}', { sub: sgTitle, id: inner.id, type: inner.type, err: err.message }));
       }
     }
     // 子图输出槽 → 内部实际来源（嵌套时会在第二遍按链改写）
@@ -1091,12 +1094,12 @@ export function convertUiToApi(uiJson, schemas = {}) {
     if (schema) {
       applyWidgetValues(inputs, schema, node.widgets_values, linkedNames, node.inputs);
     } else if (!isBypass && !FRONTEND_VALUE_TYPES.has(node.type)) {
-      const where = titlePrefix ? `（${titlePrefix}）` : '';
-      warnings.push(`缺少 ${node.type} 的节点定义${where}，节点 ${finalId} 仅保留连线输入`);
+      const where = titlePrefix ? tf('（子图 {name}）', { name: titlePrefix }) : '';
+      warnings.push(tf('缺少 {type} 的节点定义{where}，节点 {id} 仅保留连线输入', { type: node.type, where, id: finalId }));
     }
 
     if (isBypass) {
-      if (node.mode === 4) warnings.push(`节点 ${finalId}（${friendlyClassName(node.type)}）被旁路，已按同类型穿通处理`);
+      if (node.mode === 4) warnings.push(tf('节点 {id}（{cls}）被旁路，已按同类型穿通处理', { id: finalId, cls: friendlyClassName(node.type) }));
       buildBypassInfo(finalId, node.type, inputs);
       return;
     }
@@ -1124,7 +1127,7 @@ export function convertUiToApi(uiJson, schemas = {}) {
       }
       convertOneNode(node, '', links, null, '');
     } catch (err) {
-      warnings.push(`节点 ${node.id}（${node.type}）转换失败已跳过：${err.message}`);
+      warnings.push(tf('节点 {id}（{type}）转换失败已跳过：{err}', { id: node.id, type: node.type, err: err.message }));
     }
   }
 
@@ -1196,13 +1199,13 @@ export function convertUiToApi(uiJson, schemas = {}) {
       const [from, slot] = value;
       if (mutedIds.has(from)) {
         delete node.inputs[name];
-        warnings.push(`输入 ${name} 指向被静音的节点 #${from}，已移除`);
+        warnings.push(tf('输入 {name} 指向被静音的节点 #{from}，已移除', { name, from }));
         continue;
       }
       const finalized = finalizeLink(from, slot);
       if (!finalized) {
         delete node.inputs[name];
-        warnings.push(`输入 ${name} 的来源（#${from}:${slot}）无法解析，已移除`);
+        warnings.push(tf('输入 {name} 的来源（#{from}:{slot}）无法解析，已移除', { name, from, slot }));
       } else if (finalized.literal !== undefined) {
         node.inputs[name] = finalized.literal;
       } else {

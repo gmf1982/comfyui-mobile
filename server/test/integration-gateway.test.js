@@ -103,6 +103,19 @@ test('错误令牌 → 401', async () => {
   assert.equal(res.status, 401);
 });
 
+test('X-App-Lang: en → 鉴权与文件接口错误文案为英文', async () => {
+  const unauthorized = await fetch(`${base}/system_stats`, { headers: { 'X-App-Lang': 'en' } });
+  assert.equal(unauthorized.status, 401);
+  assert.equal((await unauthorized.json()).message, 'Missing or invalid access token');
+
+  const file = await fetch(`${base}/gw/output-file?filename=x.png&type=output`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${TOKEN}`, 'X-App-Lang': 'en' },
+  });
+  assert.equal(file.status, 501);
+  assert.match((await file.json()).message, /outputDir is not configured/);
+});
+
 // ---------- 静态壳 ----------
 test('静态资源可访问（壳无鉴权）', async () => {
   const index = await fetch(`${base}/`);

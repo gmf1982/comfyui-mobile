@@ -4,6 +4,7 @@
  * 本地（Ollama http://127.0.0.1:11434/v1、llama.cpp 含多模型路由模式、LM Studio 等）。
  * API Key 只保存在网关配置里，永不下发手机端；未配置时网关回 501，手机端回退内置规则增强。
  */
+import { pick } from './lang.js';
 
 /**
  * 单次增强的默认硬超时，可被 promptLlm.models 条目的可选 timeoutMs（毫秒）按模型覆盖。
@@ -27,14 +28,42 @@ export function isDegenerate(text) {
   return false;
 }
 
+/** 英文输入的增强规则：与中文规则同义，按英文习惯控制词数与句式。 */
+function buildEnglishSystemPrompt(profileKey, mode) {
+  const isEdit = mode === 'edit';
+  const base = 'You enhance prompts for image/video generation. The user gives one raw prompt; output one complete enhanced prompt. Rules:'
+    + '1) Preserve every subject, scene, action, style and clothing detail the user wrote exactly; never replace them with a different scene or style;'
+    + (isEdit
+      ? '2) This is an instruction for an image-editing model, not a scene description: state only the edit itself (what to change/add/remove or which direction to extend). Never invent specific environments, people, objects or lighting that are not in the image; state that everything else stays unchanged and the edited edges blend naturally;'
+      : '2) Add only missing details (appearance/material/environment/lighting/composition/mood) that are consistent with the existing content;')
+    + '3) Output only the prompt: no explanation, no title, no quotes;'
+    + '4) Keep it under 80 words;'
+    + '5) Do not repeat the same phrase; avoid stacked adjectives and write 1-3 natural sentences.';
+  const byMode = mode === 'video'
+    ? ' This is a video prompt: organize it as subject + action + camera movement + mood; motion must be continuous and achievable in a 6-10 second shot.'
+    : isEdit
+      ? ' For "extend/outpaint" requests, output only the extension instruction: extend the frame outward, continue the original content, style and lighting into the new area, blend naturally, and add no new scene details.'
+      : '';
+  const byModel = {
+    qwen: isEdit ? ' Target model: Qwen-Image Edit. Write the instruction in natural English.' : ' Target model: Qwen-Image 2.1. Write a detailed, natural English paragraph.',
+    zimage: ' Target model: Z-Image. Write concise, direct natural English; avoid adjective stacking.',
+    krea: isEdit ? ' Target model: FLUX.2 Krea Edit. Write an English editing instruction and end with "keep everything else unchanged".' : ' Target model: FLUX.2 Krea. Write a natural English paragraph in photographic style; no tag lists or empty words like masterpiece.',
+    h3: ' Target model: MiniMax H3 video generation. Write in English with a director-like description.',
+    generic: ' Target model unknown. Write in English.',
+  }[profileKey] ?? ' Target model unknown. Write in English.';
+  return base + byMode + byModel;
+}
+
 /**
  * 构造系统提示词。原则借鉴 Z-image-prompt-builder 的 PE 约束：
  * 核心不可变（用户已写明的要素不得改写替换），只补缺失的外围信息，直接输出提示词本身。
  * @param {string} profileKey 模型档案 key（qwen/zimage/krea/h3/generic）
  * @param {string} mode t2i | edit | video
+ * @param {'zh'|'en'} [lang] 输出语言（由输入语言决定）
  * @returns {string}
  */
-export function buildSystemPrompt(profileKey, mode) {
+export function buildSystemPrompt(profileKey, mode, lang = 'zh') {
+  if (lang === 'en') return buildEnglishSystemPrompt(profileKey, mode);
   const isEdit = mode === 'edit';
   const base = '你是图像/视频生成提示词增强助手。用户给出一句原始提示词，你输出增强后的完整提示词。规则：'
     + '1) 用户已写明的主体、场景、动作、风格、衣物等细节一律保留原意原词，不得替换成别的场景或风格；'
@@ -64,40 +93,51 @@ export function buildSystemPrompt(profileKey, mode) {
 /**
  * 调用 OpenAI 兼容 chat/completions 生成增强提示词。
  * @param {{baseUrl: string, apiKey?: string, model: string, timeoutMs?: number}} llm 网关 promptLlm 配置
- * @param {{text: string, profileKey: string, mode: string}} input
+ * @param {{text: string, profileKey: string, mode: string, lang?: 'zh'|'en'}} input
  * @returns {Promise<{text: string}>}
  */
-export async function enhanceWithLlm(llm, { text, profileKey, mode }) {
-  const url = `${String(llm.baseUrl).replace(/\/+$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: llm.model,
-      temperature: 0.6,
-      // 抗重复：小模型（270M 级）不加惩罚会输出"海浪，海浪，海浪…"式复读
-      frequency_penalty: 0.4,
-      presence_penalty: 0.3,
-      // 思考型模型（如 reasoning 预算 2048 的本地路由预设）会先耗思考 token 再出正文，
-      // 上限太小会让正文为空；思考段由下方剥除逻辑处理，不会进入结果。
-      max_tokens: 3000,
-      messages: [
-        { role: 'system', content: buildSystemPrompt(profileKey, mode) },
-        { role: 'user', content: text },
-      ],
-    }),
-    signal: AbortSignal.timeout(Number(llm.timeoutMs) || TIMEOUT_MS),
+export async function enhanceWithLlm(llm, { text, profileKey, mode, lang = 'zh' }) {
+  const base = String(llm.baseUrl).replace(/\/+$/, '');
+  // 配置可能是 https://.../v1、https://.../api/paas/v4 或裸 Ollama 根地址；
+  // 裸根地址先按原路径失败时再试 /v1，兼容 Ollama 的 OpenAI 兼容端点。
+  const urls = [`${base}/chat/completions`];
+  if (!/\/v1$/i.test(base)) urls.push(`${base}/v1/chat/completions`);
+  const body = JSON.stringify({
+    model: llm.model,
+    temperature: 0.6,
+    // 抗重复：小模型（270M 级）不加惩罚会输出"海浪，海浪，海浪…"式复读
+    frequency_penalty: 0.4,
+    presence_penalty: 0.3,
+    // 思考型模型（如 reasoning 预算 2048 的本地路由预设）会先耗思考 token 再出正文，
+    // 上限太小会让正文为空；思考段由下方剥除逻辑处理，不会进入结果。
+    max_tokens: 3000,
+    messages: [
+      { role: 'system', content: buildSystemPrompt(profileKey, mode, lang) },
+      { role: 'user', content: text },
+    ],
   });
+  let res = null;
+  for (let i = 0; i < urls.length; i++) {
+    res = await fetch(urls[i], {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {}),
+      },
+      body,
+      signal: AbortSignal.timeout(Number(llm.timeoutMs) || TIMEOUT_MS),
+    });
+    // 只有「路径不存在」才换下一种写法；鉴权/限流/模型错误直接返回
+    if ((res.status === 404 || res.status === 405) && i < urls.length - 1) continue;
+    break;
+  }
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')).slice(0, 200);
-    throw new Error(`LLM 端点返回 ${res.status}${detail ? `：${detail}` : ''}`);
+    throw new Error(pick(lang, `LLM 端点返回 ${res.status}${detail ? `：${detail}` : ''}`, `LLM endpoint returned ${res.status}${detail ? `: ${detail}` : ''}`));
   }
   const data = await res.json();
   let out = data?.choices?.[0]?.message?.content;
-  if (typeof out !== 'string' || !out.trim()) throw new Error('LLM 返回内容为空');
+  if (typeof out !== 'string' || !out.trim()) throw new Error(pick(lang, 'LLM 返回内容为空', 'LLM returned an empty response'));
   // qwen3 等思考型模型会先输出 <think>…</think> 推理段，剥掉只留正文。
   // llama.cpp 路由开推理解析时可能吞掉开标签、只在正文残留闭合标签，
   // 此时闭标签之前整段都是思考残段，一并剥掉。
@@ -114,6 +154,6 @@ export async function enhanceWithLlm(llm, { text, profileKey, mode }) {
   }
   if (out.endsWith(fence)) out = out.slice(0, -fence.length);
   out = out.replace(/^["“”']+|["“”']+$/g, '').trim();
-  if (isDegenerate(out)) throw new Error('模型输出重复退化');
+  if (isDegenerate(out)) throw new Error(pick(lang, '模型输出重复退化', 'Model output degenerated into repetition'));
   return { text: out };
 }

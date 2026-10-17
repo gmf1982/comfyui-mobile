@@ -28,6 +28,8 @@ const DEFAULTS = {
   //   { "name": "gemma3:270m（本地）", "baseUrl": "http://127.0.0.1:11434/v1", "apiKey": "", "model": "gemma3:270m" },
   //   { "name": "GLM-4.7-Flash", "baseUrl": "https://open.bigmodel.cn/api/paas/v4", "apiKey": "你的key", "model": "glm-4.7-flash" }
   // ] }
+  // model 可留空：网关会实时探测该端点的 /v1/models 与 Ollama /api/tags，手机端列出全部可用模型：
+  //   { "name": "本地 Ollama", "baseUrl": "http://127.0.0.1:11434", "apiKey": "" }
   // 旧的单模型写法 {baseUrl, apiKey, model} 仍兼容（自动归一为单元素列表）。
   promptLlm: { enabled: false, models: [] },
   // ComfyUI 远程启动（/gw/comfyui/start）：本机启动命令，只在手机端点「启动 ComfyUI」时执行。
@@ -104,10 +106,11 @@ export function loadConfig({ configFile = '', overrides = {} } = {}) {
       p.models = [{ name: p.model, baseUrl: p.baseUrl, apiKey: p.apiKey ?? '', model: p.model }];
     }
     p.models = p.models.map((m) => {
-      if (!m?.baseUrl || !m?.model) {
-        throw new Error('promptLlm.models 每一项都必须包含 baseUrl 与 model（apiKey 可留空，本地端点无需鉴权）');
+      if (!m?.baseUrl) {
+        throw new Error('promptLlm.models 每一项都必须包含 baseUrl（model 可留空，由网关实时探测端点模型；apiKey 可留空）');
       }
-      const item = { name: String(m.name ?? m.model), baseUrl: String(m.baseUrl), apiKey: String(m.apiKey ?? ''), model: String(m.model) };
+      const model = String(m.model ?? '');
+      const item = { name: String(m.name ?? (model || m.baseUrl)), baseUrl: String(m.baseUrl), apiKey: String(m.apiKey ?? ''), model };
       // timeoutMs 可选：思考型/需冷加载的大模型按项放宽超时（毫秒），不填用 enhance.js 默认值
       if (m.timeoutMs != null) item.timeoutMs = Number(m.timeoutMs);
       return item;

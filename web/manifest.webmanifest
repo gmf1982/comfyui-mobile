@@ -1,7 +1,7 @@
 {
   "name": "ComfyUI Mobile",
   "short_name": "ComfyUI Mobile",
-  "description": "手机远程控制电脑 ComfyUI 生图/生视频/生音频",
+  "description": "Control ComfyUI on your PC from your phone — image, video and audio generation. English and Chinese UI.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

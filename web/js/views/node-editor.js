@@ -151,7 +151,7 @@ export async function nodeEditorView(container) {
           return 'image_' + idx;
         })();
         const addRow = el('div', { class: 'row', style: { marginBottom: '6px' } });
-        addRow.append(el('div', { class: 'grow', style: { fontSize: '13px' }, text: '新增 ' + freeSlot + '（' + dyn.innerType + '）' }));
+        addRow.append(el('div', { class: 'grow', style: { fontSize: '13px' }, text: tf('新增 {slot}（{type}）', { slot: freeSlot, type: dyn.innerType }) }));
         addRow.append(el('button', {
           class: 'btn small primary', text: '＋ ' + t('🔗 连接'),
           onclick: () => connectSheet(node, inputName + '.' + freeSlot, dyn.innerType),
@@ -175,7 +175,7 @@ export async function nodeEditorView(container) {
         }));
       } else {
         row.append(el('button', {
-          class: 'btn small', text: '🔗 连接',
+          class: 'btn small', text: t('🔗 连接'),
           onclick: () => connectSheet(node, inputName, typeStr),
         }));
       }
@@ -272,7 +272,7 @@ export async function nodeEditorView(container) {
     for (const c of candidates.slice(0, 60)) {
       sheet.append(el('button', {
         class: 'btn', style: { width: '100%', marginBottom: '6px', justifyContent: 'flex-start' },
-        text: `${friendlyClassName(c.cls)}（#${c.id}）· 输出${c.slot} [${c.type}]`,
+        text: tf('{cls}（#{id}）· 输出 {slot} [{type}]', { cls: friendlyClassName(c.cls), id: c.id, slot: c.slot, type: c.type }),
         onclick: () => {
           wfState.json[String(targetNode.id)].inputs[inputName] = [String(c.id), c.slot];
           hideSheet();
@@ -281,7 +281,7 @@ export async function nodeEditorView(container) {
         },
       }));
     }
-    sheet.append(el('button', { class: 'btn', style: { width: '100%', marginTop: '8px' }, text: '取消', onclick: hideSheet }));
+    sheet.append(el('button', { class: 'btn', style: { width: '100%', marginTop: '8px' }, text: t('取消'), onclick: hideSheet }));
     showSheet(sheet);
   }
 
@@ -318,7 +318,7 @@ export async function nodeEditorView(container) {
     const sheet = el('div', {}, el('h3', { text: t('把 输出') + slot + t('（') + wantType + t('）连到…') }));
     if (!candidates.length) sheet.append(el('div', { class: 'muted', text: t('没有类型匹配的输入；可先添加一个节点。') }));
     for (const c of candidates.slice(0, 80)) {
-      const label = friendlyClassName(c.cls) + '（#' + c.id + '）· ' + c.inputName + (c.isNew ? '（新增）' : c.connected ? '（覆盖原连线）' : '');
+      const label = friendlyClassName(c.cls) + t('（') + '#' + c.id + t('）') + ' · ' + c.inputName + (c.isNew ? t('（新增）') : c.connected ? t('（覆盖原连线）') : '');
       sheet.append(el('button', {
         class: 'btn', style: { width: '100%', marginBottom: '6px', justifyContent: 'flex-start', textAlign: 'left' },
         text: label,
@@ -330,7 +330,7 @@ export async function nodeEditorView(container) {
         },
       }));
     }
-    sheet.append(el('button', { class: 'btn', style: { width: '100%', marginTop: '8px' }, text: '取消', onclick: hideSheet }));
+    sheet.append(el('button', { class: 'btn', style: { width: '100%', marginTop: '8px' }, text: t('取消'), onclick: hideSheet }));
     showSheet(sheet);
   }
 
@@ -424,7 +424,7 @@ export async function nodeEditorView(container) {
         inputs[name] = typeof def[1]?.default === 'string' ? def[1].default : '';
       }
     }
-    wf[nextId] = { class_type: classType, inputs, _meta: { title: friendlyClassName(classType) } };
+    wf[nextId] = { class_type: classType, inputs, _meta: { title: classType } };
     draw();
     toast(t('已添加 ') + friendlyClassName(classType) + t('（') + '#' + nextId + t('），点按节点可连线'));
     setTimeout(() => api?.focus(nextId), 100);

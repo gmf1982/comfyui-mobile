@@ -165,12 +165,12 @@ export async function queueView(container) {
   /** 把毫秒格式化为「用时 X」，极短（缓存命中）时额外标注。 */
   function formatDuration(ms) {
     if (ms == null) return '';
-    if (ms < 1000) return '用时 ' + ms + ' 毫秒（缓存命中，未重新计算）';
+    if (ms < 1000) return tf('用时 {ms} 毫秒（缓存命中，未重新计算）', { ms });
     const secs = ms / 1000;
-    const text = secs >= 60
-      ? Math.floor(secs / 60) + ' 分 ' + Math.round(secs % 60) + ' 秒'
-      : (secs >= 10 ? Math.round(secs) : secs.toFixed(1)) + ' 秒';
-    return '用时 ' + text;
+    if (secs >= 60) {
+      return tf('用时 {m} 分 {s} 秒', { m: Math.floor(secs / 60), s: Math.round(secs % 60) });
+    }
+    return tf('用时 {s} 秒', { s: secs >= 10 ? Math.round(secs) : secs.toFixed(1) });
   }
 
   function renderResult() {
@@ -188,7 +188,7 @@ export async function queueView(container) {
           el('h3', { style: { margin: 0 }, text: t('本次生成结果') }),
           el('div', { class: 'muted', text: tf('{n} 项', { n: items.length }) + (durationMs != null ? ' · ' + formatDuration(durationMs) : '') }),
         ),
-        el('button', { class: 'btn small', text: '图库', onclick: () => { location.hash = '/gallery'; } }),
+        el('button', { class: 'btn small', text: t('图库'), onclick: () => { location.hash = '/gallery'; } }),
       ),
     );
     // 按节点分组：同一节点的 a_images+b_images 合成一个滑块对比控件，其余逐项渲染

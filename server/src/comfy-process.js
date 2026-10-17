@@ -8,6 +8,7 @@
 import { spawn, execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pick } from './lang.js';
 
 /** 模块级状态：跟踪最近一次拉起的子进程（仅本进程内存，网关重启后靠探测恢复认知）。 */
 let child = null;
@@ -54,9 +55,9 @@ export async function comfyStatus(cfg) {
  * @param {{ logsDir: string }} io 日志目录：ComfyUI 的 stdout/stderr 追加写入 logsDir/comfyui.log
  * @returns {Promise<{ok: boolean, status?: string, pid?: number, code?: number, error?: string, message?: string}>}
  */
-export async function startComfyUI(cfg, { logsDir }) {
+export async function startComfyUI(cfg, { logsDir, lang = 'zh' }) {
   if (!comfyLaunchConfigured(cfg)) {
-    return { ok: false, code: 400, error: 'launch_not_configured', message: '网关未配置 ComfyUI 启动命令（server/config.json 的 comfyuiLaunch）' };
+    return { ok: false, code: 400, error: 'launch_not_configured', message: pick(lang, '网关未配置 ComfyUI 启动命令（server/config.json 的 comfyuiLaunch）', 'ComfyUI launch command is not configured on the gateway (comfyuiLaunch in server/config.json)') };
   }
   if (await probeUpstream(cfg)) return { ok: true, status: 'already-running' };
   if (childAlive()) return { ok: true, status: 'starting', pid: child.pid };
@@ -109,19 +110,19 @@ export async function startComfyUI(cfg, { logsDir }) {
  * @param {object} cfg 网关配置
  * @param {{ logsDir: string }} io 日志目录
  */
-export async function restartComfyUI(cfg, { logsDir }) {
+export async function restartComfyUI(cfg, { logsDir, lang = 'zh' }) {
   if (!comfyLaunchConfigured(cfg)) {
-    return { ok: false, code: 400, error: 'launch_not_configured', message: '网关未配置 ComfyUI 启动命令（server/config.json 的 comfyuiLaunch）' };
+    return { ok: false, code: 400, error: 'launch_not_configured', message: pick(lang, '网关未配置 ComfyUI 启动命令（server/config.json 的 comfyuiLaunch）', 'ComfyUI launch command is not configured on the gateway (comfyuiLaunch in server/config.json)') };
   }
   let url;
-  try { url = new URL(cfg.upstream); } catch { return { ok: false, code: 400, error: 'invalid_upstream', message: 'upstream 配置不合法' }; }
+  try { url = new URL(cfg.upstream); } catch { return { ok: false, code: 400, error: 'invalid_upstream', message: pick(lang, 'upstream 配置不合法', 'Invalid upstream configuration') }; }
   const host = url.hostname;
   if (!['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)) {
-    return { ok: false, code: 400, error: 'restart_local_only', message: `重启仅支持本机 upstream（当前 ${host}）` };
+    return { ok: false, code: 400, error: 'restart_local_only', message: pick(lang, `重启仅支持本机 upstream（当前 ${host}）`, `Restart only supports a local upstream (current: ${host})`) };
   }
   const port = Number(url.port) || (url.protocol === 'https:' ? 443 : 80);
   if (port === cfg.port) {
-    return { ok: false, code: 400, error: 'invalid_upstream', message: 'upstream 不能指向网关自身端口' };
+    return { ok: false, code: 400, error: 'invalid_upstream', message: pick(lang, 'upstream 不能指向网关自身端口', 'upstream cannot point to the gateway port itself') };
   }
   // 刚拉起 15 秒保护期内不重复重启：连点/双击不会杀掉刚起来的进程
   if (childAlive() && Date.now() - lastSpawnAt < SPAWN_DEBOUNCE_MS) {
@@ -131,23 +132,23 @@ export async function restartComfyUI(cfg, { logsDir }) {
   // （否则「spawn 崩溃后 15 秒内重启」会被防抖拦成 starting，永不恢复）
   lastSpawnAt = 0;
   if (!(await probeUpstream(cfg))) {
-    return startComfyUI(cfg, { logsDir }); // 本就没运行 → 等价于启动
+    return startComfyUI(cfg, { logsDir, lang }); // 本就没运行 → 等价于启动
   }
   appendLog(logsDir, `收到重启请求：结束监听 ${host}:${port} 的进程树后重新拉起`);
   await killTrackedChild();
   const killed = await killUpstreamListeners(port);
   if (!killed && (await probeUpstream(cfg))) {
-    return { ok: false, code: 502, error: 'kill_failed', message: `未能结束 ${host}:${port} 上的 ComfyUI 进程（权限不足或进程不受管）` };
+    return { ok: false, code: 502, error: 'kill_failed', message: pick(lang, `未能结束 ${host}:${port} 上的 ComfyUI 进程（权限不足或进程不受管）`, `Could not stop the ComfyUI process on ${host}:${port} (insufficient permission or the process is unmanaged)`) };
   }
   // 等端口真正释放再拉起（taskkill 后套接字一般即刻释放，最多等 8 秒）
   const deadline = Date.now() + 8000;
   while (await probeUpstream(cfg)) {
     if (Date.now() > deadline) {
-      return { ok: false, code: 502, error: 'kill_failed', message: `结束进程后 ${host}:${port} 仍可访问，放弃重启` };
+      return { ok: false, code: 502, error: 'kill_failed', message: pick(lang, `结束进程后 ${host}:${port} 仍可访问，放弃重启`, `${host}:${port} is still reachable after stopping the process; restart aborted`) };
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  return startComfyUI(cfg, { logsDir });
+  return startComfyUI(cfg, { logsDir, lang });
 }
 
 /** 结束网关自己拉起的子进程树（cmd 包装壳 + 其下的 python 等）。 */
