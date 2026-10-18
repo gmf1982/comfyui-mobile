@@ -128,6 +128,15 @@ function QUICK_START(v) {
    点「更多信息」→「仍要运行」。
 5. 想开机自动运行网关：以管理员不需要，直接运行 app\\scripts\\install-autostart.bat
    （创建当前用户的计划任务；卸载用同目录 uninstall-autostart.bat）。
+6. 想出门在外也能用手机连电脑（外网访问，只需设置一次）：
+   ① 电脑安装 Tailscale：https://tailscale.com/download （下载后双击安装）
+   ② 打开 Tailscale，用浏览器登录（免费注册一个账号即可）
+   ③ 用记事本打开 app\\server\\config.json，把 "tunnel": false 改成 "tunnel": "serve"，
+      保存后关掉网关窗口再重新双击打开
+   ④ 手机也安装 Tailscale App 并登录同一账号，之后「手机链接.txt」里的
+      Tailscale 地址在任何地方都能打开
+   · serve（推荐）：点对点直连最快、不暴露公网，但手机要装 Tailscale
+   · funnel：手机什么都不用装，走公网中继较慢；把上面改成 "funnel" 即可
 
 --- Quick Start (portable, no installation needed) ---
 
@@ -142,6 +151,16 @@ function QUICK_START(v) {
    click "More info" → "Run anyway".
 5. To auto-start at logon: run app\\scripts\\install-autostart.bat
    (user-level scheduled task; uninstall with uninstall-autostart.bat).
+6. To reach the gateway from outside your home network (one-time setup):
+   ① Install Tailscale on the PC: https://tailscale.com/download
+   ② Open Tailscale and log in with a free account.
+   ③ Edit app\\server\\config.json: change "tunnel": false to "tunnel": "serve",
+      save, then close and reopen the gateway window.
+   ④ Install the Tailscale app on your phone and sign in with the same account;
+      the Tailscale URL in "手机链接.txt" then works anywhere.
+   · serve (recommended): fastest peer-to-peer, not exposed to the public net.
+   · funnel: nothing to install on the phone, but slower via public relay —
+     use "funnel" instead of "serve" in step ③.
 `;
 }
 

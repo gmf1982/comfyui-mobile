@@ -72,6 +72,8 @@ gateway.server.listen(cfg.port, cfg.host, async () => {
     console.log('  未启用可用的 Tailscale 地址，改用本机/局域网地址（仅同一网络可用）：');
     for (const u of collectUrls) console.log('  ' + u.url);
     if (!cfg.tls) console.log('  ⚠ HTTP 明文：请勿把该地址直接暴露到公网。');
+    console.log('  想出门在外也能连？只需做一次：① 电脑装 Tailscale（https://tailscale.com/download）');
+    console.log('  ② 打开 Tailscale 登录 ③ 把 server/config.json 里的 "tunnel": false 改为 "tunnel": "serve"，重启网关。');
   }
   console.log('==========================================================');
 
@@ -135,6 +137,17 @@ function writeLinksFile() {
   for (const u of collectUrls) lines.push('  ' + u.label + '：' + u.url);
   lines.push('');
   lines.push('提示：手机第一次打开需要带上链接里的 ?token=…，之后浏览器会记住登录。');
+  if (!hasTunnel) {
+    lines.push('');
+    lines.push('想出门在外也能访问？外网访问教程（只需设置一次）：');
+    lines.push('  1. 电脑安装 Tailscale：https://tailscale.com/download （Windows 下载后双击安装即可）');
+    lines.push('  2. 打开 Tailscale，用浏览器登录（免费注册一个账号就行）');
+    lines.push('  3. 用记事本打开网关目录 server 文件夹里的 config.json（绿色版在 app\\server 里），');
+    lines.push('     把 "tunnel": false 改成 "tunnel": "serve"，保存后关掉网关窗口再重新打开');
+    lines.push('     · serve（推荐）：手机也要装 Tailscale App 并登录同一账号，速度最快、不暴露公网');
+    lines.push('     · funnel：手机什么都不用装，走公网中继较慢；改成 "funnel" 即可');
+    lines.push('  4. 重启后本文件会出现 Tailscale 永久地址，手机保存它，以后在任何地方都能连');
+  }
   try {
     const file = path.join(projectRoot, '手机链接.txt');
     fs.writeFileSync(file, lines.join('\n') + '\n', 'utf8');
