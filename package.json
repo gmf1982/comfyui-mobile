@@ -1,6 +1,6 @@
 {
   "name": "comfyui-mobile",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Control ComfyUI on your PC from your phone: secure gateway + mobile PWA",
   "type": "module",
   "private": true,
