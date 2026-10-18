@@ -44,7 +44,7 @@
 
 ## 📦 下载即用（Windows 免安装）
 
-不想折腾命令行和环境？到 [Releases](https://github.com/gmf1982/comfyui-mobile/releases/latest) 下载 `*-win-x64-portable.zip`：解压后双击 `ComfyUI-Mobile.exe` 即启动网关（包内已自带 Node.js 运行时，电脑什么都不用装），浏览器打开 `http://127.0.0.1:8899` 开始使用，详见包内「快速开始.txt」。
+不想折腾命令行和环境？到 [Releases](https://github.com/gmf1982/comfyui-mobile/releases/latest) 下载 `*-win-x64-portable.zip`：解压后双击 `ComfyUI-Mobile.exe` 即启动网关（包内已自带 Node.js 运行时，电脑什么都不用装），浏览器打开 `http://127.0.0.1:8899` 开始使用，详见包内「快速开始.txt」。想出门在外也能连手机，教程也在「快速开始.txt」和网关启动提示里（装 Tailscale → 登录 → 把配置里 `"tunnel": false` 改为 `"tunnel": "serve"`）。
 
 > 首次运行若 Windows 提示「已保护你的电脑」：点「更多信息」→「仍要运行」（程序未代码签名，属正常现象）。绿色版仅支持 Windows x64。
 
@@ -220,7 +220,7 @@ docs/     开发文档
 
 ## 📦 Download & Run (Windows, portable)
 
-No command line needed: grab `*-win-x64-portable.zip` from [Releases](https://github.com/gmf1982/comfyui-mobile/releases/latest), unzip and double-click `ComfyUI-Mobile.exe` — the gateway starts with a bundled Node.js runtime, nothing to install on your PC. Then open `http://127.0.0.1:8899` in a browser.
+No command line needed: grab `*-win-x64-portable.zip` from [Releases](https://github.com/gmf1982/comfyui-mobile/releases/latest), unzip and double-click `ComfyUI-Mobile.exe` — the gateway starts with a bundled Node.js runtime, nothing to install on your PC. Then open `http://127.0.0.1:8899` in a browser. Remote-access setup (Tailscale) is explained step by step in the bundled `快速开始.txt` and in the gateway's startup messages.
 
 > If SmartScreen says "Windows protected your PC": click "More info" → "Run anyway" (the exe is unsigned). Portable build is Windows x64 only.
 
