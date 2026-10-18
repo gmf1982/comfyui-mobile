@@ -1,0 +1,5 @@
+{
+  "main": "packaging/launcher.cjs",
+  "output": "build-cache/sea-prep.blob",
+  "disableExperimentalSEAWarning": true
+}

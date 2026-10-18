@@ -1,4 +1,6 @@
 node_modules/
+dist/
+build-cache/
 server/config.json
 server/.thumb-cache/
 tmp-*.json

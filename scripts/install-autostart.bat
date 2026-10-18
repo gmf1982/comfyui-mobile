@@ -18,9 +18,13 @@ set "ROOT=%cd%"
 set "VBS=%ROOT%\scripts\gateway-keepalive.vbs"
 
 set "NODEEXE="
-for /f "delims=" %%n in ('where node 2^>nul') do if not defined NODEEXE set "NODEEXE=%%n"
+rem Portable packages ship a bundled runtime at ..\runtime\node.exe; prefer it.
+if exist "%ROOT%\..\runtime\node.exe" set "NODEEXE=%ROOT%\..\runtime\node.exe"
 if not defined NODEEXE (
-  echo [error] node.exe not found in PATH. Install Node.js first.
+  for /f "delims=" %%n in ('where node 2^>nul') do if not defined NODEEXE set "NODEEXE=%%n"
+)
+if not defined NODEEXE (
+  echo [error] node.exe not found in PATH or bundled runtime folder. Install Node.js first.
   exit /b 1
 )
 

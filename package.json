@@ -11,7 +11,8 @@
     "start": "node server/src/index.js",
     "mock": "node scripts/mock-comfy.js",
     "test": "node --test \"server/test/*.test.js\"",
-    "check:privacy": "node scripts/check-privacy.mjs"
+    "check:privacy": "node scripts/check-privacy.mjs",
+    "build:portable": "node scripts/build-portable.mjs"
   },
   "dependencies": {
     "sharp": "^0.35.0",
