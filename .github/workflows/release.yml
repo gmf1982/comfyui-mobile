@@ -22,3 +22,7 @@ jobs:
           body: |
             Windows x64 免安装绿色版：解压后双击 ComfyUI-Mobile.exe 即可运行网关（自带 Node 运行时）。
             首次运行若 SmartScreen 拦截：更多信息 → 仍要运行（程序未代码签名）。
+
+            Portable build for Windows x64: unzip and double-click ComfyUI-Mobile.exe to run the gateway
+            (Node.js runtime bundled, nothing to install).
+            If SmartScreen blocks the first run: "More info" → "Run anyway" (the exe is unsigned).
