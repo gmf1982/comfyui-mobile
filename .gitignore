@@ -31,3 +31,6 @@ gateway.log
 docs/HANDOVER.md
 docs/REVIEW.md
 gui-test-screenshots/
+
+# 托盘程序二进制（内嵌第三方编译路径，不入库，可改经 Release 附件分发）
+Tray.exe*
