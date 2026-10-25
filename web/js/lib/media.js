@@ -14,6 +14,7 @@ export function extType(filename) {
 
 /** `/view` 媒体直链（鉴权经 Cookie 通道自动携带）。version=运行序号，防文件名复用命中旧缓存。 */
 export function viewUrl(item) {
+  if (item.fileUrl) return item.fileUrl; // 图库目录直读条目自带完整 URL
   const q = new URLSearchParams({
     filename: item.filename ?? '',
     subfolder: item.subfolder ?? '',
@@ -26,8 +27,8 @@ export function viewUrl(item) {
 /** 触发浏览器下载（同源 + download 属性，iOS 13+/Android 均支持）。 */
 export function downloadMedia(item) {
   const a = document.createElement('a');
-  a.href = viewUrl(item);
-  a.download = item.filename ?? 'download';
+  a.href = item.downloadUrl ?? viewUrl(item);
+  a.download = item.filename ?? item.name ?? 'download';
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -173,4 +174,17 @@ export function inputMediaUrl(filename, subfolder = '', quality = null, maxDim =
   }
   if (version != null) q.set('v', String(version));
   return '/view?' + q;
+}
+
+/** 图库目录直读：文件流地址（网关本地读盘，支持 Range；download=1 时带 attachment 头走浏览器原生下载，无需等整文件缓存）。 */
+export function outputFileUrl(relPath, download = false) {
+  const q = new URLSearchParams({ path: relPath });
+  if (download) q.set('download', '1');
+  return `/gw/output-file?${q}`;
+}
+
+/** 图库磁贴缩略图：网关本地生成（图片 sharp 缩放 / 视频 ffmpeg 抽帧），失败时前端回退。 */
+export function outputThumbUrl(relPath, maxDim = 448, quality = 62) {
+  const q = new URLSearchParams({ path: relPath, w: String(maxDim), q: String(quality) });
+  return `/gw/output-thumb?${q}`;
 }

@@ -11,7 +11,6 @@ import {
   CLASS_NAMES_ZH, FIELD_LABELS, MODEL_LABELS, ROLE_ROW_TITLES, friendlyClassName, heroRowTitle,
 } from '../../web/js/lib/workflow-form.js';
 import { enhancePrompt, detectModelProfile, detectMode } from '../../web/js/lib/prompt-enhancer.js';
-import { buildSystemPrompt } from '../src/enhance.js';
 import { reqLang, pick } from '../src/lang.js';
 
 const CJK = /[\u4e00-\u9fff]/;
@@ -105,13 +104,6 @@ test('提示词增强按输入语言输出（英文输入不混中文）', () =>
   assert.doesNotMatch(video.text, CJK);
   const zh = enhancePrompt({ text: '一只猫坐在窗台上', profileKey: 'qwen', mode: 't2i' });
   assert.match(zh.text, CJK);
-});
-
-test('服务端 LLM 增强支持英文 system prompt', () => {
-  const en = buildSystemPrompt('qwen', 't2i', 'en');
-  assert.doesNotMatch(en, CJK);
-  assert.match(en, /English/);
-  assert.match(buildSystemPrompt('qwen', 't2i', 'zh'), CJK);
 });
 
 test('服务端按 X-App-Lang / Accept-Language 选择文案', () => {

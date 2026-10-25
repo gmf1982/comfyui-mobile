@@ -17,7 +17,7 @@ export async function loginView(container) {
     status.textContent = t('连接中…');
     try {
       await apiJson('/system_stats');
-      location.hash = '/workflows';
+      location.hash = '/run';
       bus.dispatchEvent(new CustomEvent('cm:login'));
     } catch (err) {
       if (err.status === 401) {
@@ -26,7 +26,7 @@ export async function loginView(container) {
       } else if (err.status === 502 || err.status === 503) {
         // 令牌已通过网关校验，只是 ComfyUI 没开（这正是远程启动的主场景）：放行登录，
         // 「设置 → 服务器」里可用「启动 ComfyUI」把电脑端的 ComfyUI 拉起来。
-        location.hash = '/workflows';
+        location.hash = '/run';
         bus.dispatchEvent(new CustomEvent('cm:login'));
         toast(t('ComfyUI 未连接，已登录；可到「设置」里远程启动 ComfyUI'));
       } else {

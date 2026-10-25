@@ -89,7 +89,8 @@ function buildSheetGrab(sheet) {
     moved = dy > 8;
     const dismiss = dy > Math.max(72, sheet.offsetHeight * 0.2);
     sheet.style.transition = `transform ${dismiss ? 0.16 : 0.22}s ease`;
-    sheet.style.transform = dismiss ? 'translateY(100%)' : '';
+    // 位移量按整屏算：锚定模式（top 定位）下抽屉不在屏幕底，滑自身高度滑不出屏
+    sheet.style.transform = dismiss ? `translateY(${window.innerHeight}px)` : '';
     if (dismiss) setTimeout(hideSheet, 170);
   };
   grab.addEventListener('pointerup', release);
@@ -101,12 +102,31 @@ function buildSheetGrab(sheet) {
   return grab;
 }
 
-/** 底部抽屉（选择操作/编辑节点参数）。 */
-export function showSheet(content) {
+/**
+ * 底部抽屉（选择操作/编辑节点参数）。
+ * opts.anchor 传入元素时启用锚定模式：抽屉顶缘贴在该元素下方（悬浮卡片），
+ * 而非贴屏幕底——提示词助手用，编辑时与输入框同屏。
+ */
+export function showSheet(content, opts = {}) {
   const sheet = document.getElementById('sheet');
   const backdrop = document.getElementById('sheet-backdrop');
   clear(sheet);
   sheet.append(buildSheetGrab(sheet), content);
+  if (opts.anchor?.isConnected) {
+    // 顶缘盖住锚点字段的下三分之一：比整字段下方再往上探约两行的高度，
+    // 卡片更高、能多显示约两行内容（用户要的效果，见 2026-10-24 截图）。
+    // 距屏顶至少 12px；空间不足时最高不超过屏幕 55% 处。
+    // 高度上限给底部留 12px 边距，与左右边距（.sheet.anchored）一致，四边都不贴屏
+    const rect = opts.anchor.getBoundingClientRect();
+    const top = Math.max(12, Math.min(rect.bottom - rect.height / 3, window.innerHeight * 0.55));
+    sheet.classList.add('anchored');
+    sheet.style.top = `${top}px`;
+    sheet.style.maxHeight = `${Math.max(200, window.innerHeight - top - 12)}px`;
+  } else {
+    sheet.classList.remove('anchored');
+    sheet.style.top = '';
+    sheet.style.maxHeight = '';
+  }
   sheet.classList.remove('hidden');
   backdrop.classList.remove('hidden');
   backdrop.onclick = hideSheet;
@@ -558,7 +578,7 @@ export function fieldEditor(field, onChange) {
             class: 'btn tiny', title: t('提示词助手'), text: '✨ ' + t('助手'),
             onclick: async () => {
               const { openPromptAssistant } = await import('./prompt-assistant.js');
-              openPromptAssistant(ta);
+              openPromptAssistant(ta, wrap);
             },
           })));
       wrap.append(headRow);

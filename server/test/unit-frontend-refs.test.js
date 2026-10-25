@@ -32,6 +32,7 @@ const BUILTINS = new Set([
   'crypto', 'performance', 'Node', 'Element', 'HTMLElement', 'getComputedStyle', 'alert', 'confirm', 'prompt',
   'import', 'super', 'this', 'arguments', 'undefined', 'NaN', 'Infinity', 'require', 'WeakMap', 'queueMicrotask',
   'Headers', 'DataView', 'async', 'click', 'var', 'mix', 'translate', 'Export',
+  'IntersectionObserver', 'CSS', 'ResizeObserver', 'MutationObserver',
 ]);
 
 /**

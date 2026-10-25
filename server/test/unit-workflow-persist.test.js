@@ -30,16 +30,18 @@ test('应用启动时静默恢复上次工作流（不打断当前页面）', ()
 test('“用作图片输入”用于图库与队列结果（实现位于共享模块）', () => {
   const actionsSrc = fs.readFileSync('web/js/lib/media-actions.js', 'utf8');
   // 按钮只在图片类型时出现，但不再依赖“当前是否已打开工作流”
-  assert.match(actionsSrc, /if \(item\.mediaType === 'image'\) \{[\s\S]{0,160}用作图片输入/);
+  assert.match(actionsSrc, /if \(media\.mediaType === 'image'\) \{[\s\S]{0,160}用作图片输入/);
   assert.doesNotMatch(actionsSrc, /item\.mediaType === 'image' && state\.workflow/, '不应依赖内存态决定是否显示');
   assert.match(actionsSrc, /先选择要用的工作流/, '无工作流时应引导选择');
   assert.match(actionsSrc, /loadWorkflowFromPath\(path, \{ navigate: false, silent: true \}\)/, '选完后就地载入');
   // 图库与队列都通过共享模块打开详情，因此两处都有该入口
-  assert.match(galSrc, /openMediaOverlay\(item, \{/, '图库应使用共享详情浮层');
+  assert.match(galSrc, /openMediaOverlay\(/, '图库应使用共享详情浮层');
   const queueSrc = fs.readFileSync('web/js/views/queue.js', 'utf8');
   assert.match(queueSrc, /openMediaOverlay\(item, \{/, '队列结果也应使用共享详情浮层');
 });
 
-test('生成耗时小于 1 秒不显示（避免“用时 0.0 秒”）', () => {
-  assert.match(galSrc, /d != null && d > 900 \? d : null/);
+test('图库数据源为 output 目录直读（不再依赖 /history）', () => {
+  assert.match(galSrc, /\/gw\/output-list/, '分页列表来自网关目录扫描');
+  assert.match(galSrc, /IntersectionObserver/, '滚动懒加载');
+  assert.doesNotMatch(galSrc, /['"]\/history/, 'ComfyUI 重启清空历史不应影响图库');
 });

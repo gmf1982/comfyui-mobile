@@ -7,10 +7,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import fsSync from 'node:fs';
 import { tokenMatches } from './config.js';
-import { isSafeMediaName } from './media.js';
+import { isSafeMediaName, mimeOfFilename } from './media.js';
 import { serveStatic } from './static.js';
 import { createUpstreamRequester } from './proxy.js';
 import { createThumbnailResponder } from './thumbs.js';
+import { createOutputGallery } from './output-gallery.js';
 import { enhanceWithLlm } from './enhance.js';
 import { comfyStatus, startComfyUI, restartComfyUI } from './comfy-process.js';
 import { attachWebSocketProxy } from './wsproxy.js';
@@ -70,8 +71,36 @@ function readBody(req, maxBytes, lang = 'zh') {
   });
 }
 
-/** 校验 {filename, subfolder} 并解析出必须位于 root 内的媒体文件绝对路径。 */
-function resolveMediaTarget(root, filename, subfolder) {
+/** 附带图片增强时的大小上限（base64 前）；超过则按纯文本增强，避免撑爆 LLM 请求。 */
+const ENHANCE_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+
+/**
+ * 从 ComfyUI 上游取一张媒体文件转成 data URL，供视觉 LLM 读图。
+ * 手机端只传 {filename, subfolder, type}，图片流量走本机/内网，不占手机上行带宽。
+ * @param {object} cfg 网关配置（upstream）
+ * @param {{filename: string, subfolder?: string, type?: string}} img
+ * @returns {Promise<string>} data URL
+ */
+async function fetchImageAsDataUrl(cfg, img) {
+  const filename = String(img?.filename ?? '').trim();
+  if (!filename || !isSafeMediaName(filename)) throw new Error('invalid_name');
+  const subfolder = String(img?.subfolder ?? '');
+  if (subfolder.split('/').includes('..')) throw new Error('invalid_subfolder');
+  const type = img?.type === 'output' ? 'output' : 'input';
+  const base = String(cfg.upstream ?? '').replace(/\/+$/, '');
+  if (!base) throw new Error('no_upstream');
+  const q = new URLSearchParams({ filename, subfolder, type });
+  const res = await fetch(`${base}/view?${q}`, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (!buf.length) throw new Error('empty_image');
+  if (buf.length > ENHANCE_IMAGE_MAX_BYTES) throw new Error('image_too_large');
+  let mime = String(res.headers['content-type'] ?? '').split(';')[0].trim();
+  if (!mime.startsWith('image/')) mime = mimeOfFilename(filename) || 'image/png';
+  return `data:${mime};base64,${buf.toString('base64')}`;
+}
+
+/** 校验 {filename, subfolder} 并解析出必须位于 root 内的媒体文件绝对路径。 */function resolveMediaTarget(root, filename, subfolder) {
   if (!isSafeMediaName(filename) || subfolder.split('/').some((p) => p === '..')) return { error: 'invalid_name' };
   const ext = path.extname(filename).slice(1).toLowerCase();
   if (!MEDIA_EXTS.includes(ext)) return { error: 'not_media' };
@@ -190,6 +219,7 @@ function getAppVersion() {
 export function createGateway(cfg, webRoot) {
   const proxyRequest = createUpstreamRequester(cfg);
   const respondThumbnail = createThumbnailResponder(cfg);
+  const outputGallery = createOutputGallery(cfg);
 
   /** 鉴权失败滑动窗口：ip → 时间戳数组 */
   const authFails = new Map();
@@ -414,14 +444,22 @@ export function createGateway(cfg, webRoot) {
         json(400, { error: 'no_model', message: pick(lang, '未指定增强模型', 'No enhancement model selected') });
         return;
       }
+      // 图生图·编辑：手机端可附带当前输入图的定位信息，网关代取图片转 data URL 给视觉模型读图。
+      // 取图失败（离线/超大/文件名不合法）不阻断，按纯文本继续增强。
+      let imageDataUrl = null;
+      if (payload.image && typeof payload.image === 'object') {
+        try {
+          imageDataUrl = await fetchImageAsDataUrl(cfg, payload.image);
+        } catch { /* 回退纯文本 */ }
+      }
       try {
         const out = await enhanceWithLlm({ ...entry, model: modelId }, {
           text,
-          profileKey: String(payload.profileKey ?? 'generic'),
           mode: String(payload.mode ?? 't2i'),
           lang: payload.lang === 'en' ? 'en' : 'zh',
+          image: imageDataUrl,
         });
-        json(200, { text: out.text, source: 'llm', model: modelId, name: entry.name });
+        json(200, { text: out.text, source: 'llm', model: modelId, name: entry.name, image: Boolean(imageDataUrl) });
       } catch (err) {
         json(502, { error: 'llm_failed', message: pick(lang, `增强失败：${err.message}`, `Enhancement failed: ${err.message}`) });
       }
@@ -488,6 +526,33 @@ export function createGateway(cfg, webRoot) {
     // 图库删除：移除 ComfyUI 输出目录下的媒体文件（需配置 outputDir，仅限该目录子树）
     if (pathname === '/gw/output-file' && req.method === 'DELETE') {
       handleDeleteOutputFile(cfg, url, res, lang);
+      return;
+    }
+
+    // 图库直读 output 目录：列表（分页/排序/过滤）、文件流（Range/attachment 下载）、
+    // 缩略图与批量删除。数据源是磁盘，与 ComfyUI 是否运行无关。
+    if (pathname === '/gw/output-list' && (req.method === 'GET' || req.method === 'HEAD')) {
+      await outputGallery.list(url, res, lang);
+      return;
+    }
+    if (pathname === '/gw/output-dirs' && (req.method === 'GET' || req.method === 'HEAD')) {
+      await outputGallery.dirs(url, res, lang);
+      return;
+    }
+    if (pathname === '/gw/output-prompt' && (req.method === 'GET' || req.method === 'HEAD')) {
+      await outputGallery.prompt(req, url, res, lang);
+      return;
+    }
+    if (pathname === '/gw/output-file' && (req.method === 'GET' || req.method === 'HEAD')) {
+      await outputGallery.file(req, url, res, lang);
+      return;
+    }
+    if (pathname === '/gw/output-thumb' && (req.method === 'GET' || req.method === 'HEAD')) {
+      await outputGallery.thumb(req, url, res, lang);
+      return;
+    }
+    if (pathname === '/gw/output-delete' && req.method === 'POST') {
+      await outputGallery.delete(req, res, lang);
       return;
     }
 

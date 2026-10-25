@@ -20,6 +20,9 @@ if not exist node_modules (
   echo [首次运行 / First run] 正在安装依赖 / Installing dependencies...
   call npm install --no-audit --no-fund
 )
+rem 把本命令窗口隐藏到系统托盘 / Hide this console window into the system tray
+rem 左键点托盘图标 = 显示/隐藏窗口（看日志）；右键 = 显示/隐藏、退出
+if exist "%~dp0Tray.exe" "%~dp0Tray.exe" "ComfyUI Mobile Gateway"
 echo 正在启动 ComfyUI Mobile 网关 / Starting ComfyUI Mobile gateway...
 node server\src\index.js
 pause

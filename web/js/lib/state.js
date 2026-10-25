@@ -1,6 +1,7 @@
 /** 全局状态：当前工作流、视图清理钩子、持久化设置、PWA 安装事件。 */
 import { apiJson, getToken } from './api.js';
 import { getLang, setLang } from './lang.js';
+import { mergePrefsFavorites, mergeHasRemoteMissing } from './prefs-merge.js';
 
 const SETTINGS_KEY = 'cm_settings';
 
@@ -141,8 +142,10 @@ function collectPrefs() {
     v: 1,
     updatedAt: Date.now(),
     favorites: favorites(),
+    favTimes: favTimes(),
     settings: state.settings,
     openWorkflows: openWorkflows(),
+    lastWorkflow: rememberedWorkflow(),
   };
 }
 
@@ -187,9 +190,21 @@ if (typeof window !== 'undefined') {
 }
 
 /**
+ * 采纳远端 settings 时，本机有未推送成功的改动则这些字段以本机为准：
+ * 云端可能是别的设备推的更旧一份，整包采纳会把本机刚排好的布局回滚
+ * （2026-10-23 实测的"布局无法保存/排序过段时间又乱"根因之一）。
+ */
+const LAYOUT_SETTINGS_KEYS = ['layoutUnitsByWf', 'layoutUnits', 'heroRows'];
+
+/**
  * 拉取云端偏好并合并（登录后调用）。
- * 服务端 updatedAt 更新 → 采用服务端的收藏/设置/多开列表（返回 true，调用方需重渲染）；
- * 否则保留本地并顺带把本地推上去。读不到（首次/离线）返回 false。
+ * 工作流收藏始终逐条合并：本机列表为空也不能整包覆盖云端——2026-10-20 桌面测试
+ * origin 一次空收藏推送把手机攒的收藏整体抹掉，last-writer-wins 对逐条数据不成立。
+ * 设置/多开列表/上次工作流按 updatedAt 整包比较（远端更新则采用；上次工作流
+ * 空值不覆盖本机），本机有未推送成功的改动时布局与上次工作流以本机为准。
+ * 补推只在合并确实补入远端缺的条目、或本机还有没推成功的改动时触发——
+ * 之前"远端较新就必补推"会放大云写频率并把采纳造成的回滚固化进云端。
+ * 读不到（首次/离线）返回 false。
  */
 export async function pullPrefs() {
   if (!getToken()) return false;
@@ -201,30 +216,74 @@ export async function pullPrefs() {
     return false;
   }
   if (!remote || typeof remote !== 'object') return false;
-  if ((remote.updatedAt ?? 0) <= (state.settings.prefsUpdatedAt ?? 0)) {
-    if (isPrefsDirty()) pushPrefsSoon();
-    return false;
-  }
+  const remoteNewer = (remote.updatedAt ?? 0) > (state.settings.prefsUpdatedAt ?? 0);
+  const localSnap = {
+    favorites: favorites(),
+    favTimes: favTimes(),
+    // 首拉（无 prefsUpdatedAt）时按新 origin 回退；已同步过的本机不复活远端新收藏
+    updatedAt: state.settings.prefsUpdatedAt ?? 0,
+  };
+  const remoteSnap = { favorites: remote.favorites, favTimes: remote.favTimes, updatedAt: remote.updatedAt };
+  const merged = mergePrefsFavorites(localSnap, remoteSnap);
+  const mergedAdded = mergeHasRemoteMissing(merged, remote);
+  const dirty = isPrefsDirty();
   try {
-    if (Array.isArray(remote.favorites)) localStorage.setItem(FAV_KEY, JSON.stringify(remote.favorites));
-    if (Array.isArray(remote.openWorkflows)) localStorage.setItem(OPEN_WFS_KEY, JSON.stringify(remote.openWorkflows));
-    if (remote.settings && typeof remote.settings === 'object') {
-      state.settings = { ...loadSettings(), ...remote.settings };
-      saveSettings();
+    localStorage.setItem(FAV_KEY, JSON.stringify(merged.favorites));
+    localStorage.setItem(FAV_TIMES_KEY, JSON.stringify(merged.favTimes));
+    if (remoteNewer && Array.isArray(remote.openWorkflows)) {
+      localStorage.setItem(OPEN_WFS_KEY, JSON.stringify(remote.openWorkflows));
+    }
+    // 上次工作流随偏好上云（换设备/换地址可恢复）：远端有就采纳，空值不覆盖本机；
+    // 本机有没推成功的改动时以本机为准，防旧远端把刚打开的工作流记忆顶掉
+    const remoteLast = remoteNewer ? remote.lastWorkflow : null;
+    if (!dirty && remoteLast && typeof remoteLast.path === 'string' && remoteLast.path) {
+      localStorage.setItem(LAST_WF_KEY, JSON.stringify({ path: remoteLast.path, name: remoteLast.name }));
+    }
+    if (remoteNewer && remote.settings && typeof remote.settings === 'object') {
+      const mergedSettings = { ...loadSettings(), ...remote.settings };
+      // 提示词收藏同样不许被"空列表"整包抹掉（工作流收藏已改逐条合并，这里按字段兜底）
+      const localFavs = state.settings.promptFavorites;
+      if (Array.isArray(localFavs) && localFavs.length
+        && (!Array.isArray(remote.settings.promptFavorites) || !remote.settings.promptFavorites.length)) {
+        mergedSettings.promptFavorites = localFavs;
+      }
+      if (dirty) {
+        for (const key of LAYOUT_SETTINGS_KEYS) {
+          if (state.settings[key] !== undefined) mergedSettings[key] = state.settings[key];
+          else delete mergedSettings[key]; // 本机已迁走的旧版字段不因采纳而复活
+        }
+      }
+      // 记到 remote.updatedAt 为止已看过：settings 里携带的 prefsUpdatedAt 是上次
+      // 推送时的旧值，不改的话下次 pull 仍判"远端较新"，每次启动都白采纳一遍
+      mergedSettings.prefsUpdatedAt = remote.updatedAt;
+      state.settings = mergedSettings;
+      setLang(state.settings.lang);
+      persistSettings(); // 与 saveSettings 的差别：不触发补推，是否补推由 mergedAdded 决定
     }
   } catch {
     return false;
   }
-  return true;
+  if (mergedAdded || dirty) pushPrefsSoon();
+  return remoteNewer;
 }
 
 const LAST_WF_KEY = 'cm_last_workflow';
 
-/** 记录/读取上次打开的工作流（仅路径，重新打开时从 ComfyUI 读文件）。 */
+/**
+ * 记录/读取上次打开的工作流（仅路径，重新打开时从 ComfyUI 读文件）。随偏好上云。
+ * path 为空的临时工作流（模板、「用此参数重跑」载入的历史参数）既不覆盖也不清除记忆：
+ * 恢复链路只能按 path 重新读文件，这类工作流没有可恢复的来源，若让它冲掉记忆，
+ * 刷新后运行页会变回「尚未打开工作流」。仅显式 setWorkflow(null)（关闭）才清。
+ */
 export function rememberWorkflow(w) {
   try {
-    if (w?.path) localStorage.setItem(LAST_WF_KEY, JSON.stringify({ path: w.path, name: w.name }));
+    if (w && !w.path) return;
+    const next = w?.path ? JSON.stringify({ path: w.path, name: w.name }) : null;
+    const prev = localStorage.getItem(LAST_WF_KEY);
+    if (next) localStorage.setItem(LAST_WF_KEY, next);
     else localStorage.removeItem(LAST_WF_KEY);
+    // 值没变不推送：启动静默恢复也会走这里，等值重写不该每次启动都多发一次云写
+    if (next !== prev) pushPrefsSoon();
   } catch { /* 存储不可用只影响跨刷新恢复 */ }
 }
 
@@ -412,6 +471,34 @@ export function saveLayoutUnits(w, units) {
 // ---------------- 工作流收藏 ----------------
 
 const FAV_KEY = 'cm_fav_workflows';
+const FAV_TIMES_KEY = 'cm_fav_times';
+
+/**
+ * 收藏逐条事件时间：path → [最近点亮, 最近取消]（0=未知）。
+ * 随 prefs 上云供 pullPrefs 逐条合并；没有该字段的旧云端按「已在列表即已点亮」处理。
+ */
+export function favTimes() {
+  try {
+    const raw = localStorage.getItem(FAV_TIMES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out = {};
+    for (const [p, v] of Object.entries(parsed)) {
+      if (Array.isArray(v)) out[p] = [Number(v[0]) || 0, Number(v[1]) || 0];
+      else if (Number(v) > 0) out[p] = [Number(v), 0];
+      else if (Number(v) < 0) out[p] = [0, -Number(v)];
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function saveFavTimes(map) {
+  try {
+    localStorage.setItem(FAV_TIMES_KEY, JSON.stringify(map));
+  } catch { /* 存储不可用时仅本次会话有效 */ }
+}
 
 /** 收藏的工作流路径列表。 */
 export function favorites() {
@@ -432,8 +519,17 @@ export function isFavorite(path) {
 export function toggleFavorite(path) {
   const list = favorites();
   const idx = list.indexOf(path);
-  if (idx === -1) list.push(path);
-  else list.splice(idx, 1);
+  const times = favTimes();
+  const entry = times[path] ?? [0, 0];
+  const t = Date.now();
+  if (idx === -1) {
+    list.push(path);
+    times[path] = [t, entry[1]];
+  } else {
+    list.splice(idx, 1);
+    times[path] = [entry[0], t];
+  }
+  saveFavTimes(times);
   try {
     localStorage.setItem(FAV_KEY, JSON.stringify(list));
   } catch { /* 存储不可用时仅本次会话有效 */ }

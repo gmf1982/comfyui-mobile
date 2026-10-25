@@ -170,6 +170,31 @@ details.adv > .adv-body { padding: 14px; }
   background: linear-gradient(transparent, rgba(0,0,0,0.7));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 多选模式：磁贴左上角圆形勾选框，选中高亮 */
+.tile-check {
+  position: absolute; top: 8px; left: 8px; z-index: 2;
+  width: 24px; height: 24px; box-sizing: border-box; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.85); background: rgba(0,0,0,0.35);
+  color: #fff; font-size: 14px; line-height: 20px; text-align: center;
+  display: none;
+}
+.gallery-grid.selecting .tile-check { display: block; }
+.tile.selected .tile-check { background: var(--primary); border-color: var(--primary); }
+.tile.selected { box-shadow: 0 0 0 2px var(--primary); }
+.gallery-grid.selecting .tile-del { display: none; }
+.gallery-sentinel { height: 2px; }
+/* 文件夹下拉：在顶部工具栏行（类型行 4 个芯片 + 下拉在手机宽度下放不下，会挤没「音频」） */
+.folder-select {
+  width: auto; flex: none; max-width: 40%;
+  padding: 7px 10px; font-size: 13px; border-radius: 10px;
+  text-overflow: ellipsis;
+}
+/* 多选操作栏：悬在底栏之上 */
+.select-bar {
+  position: fixed; left: 12px; right: 12px;
+  bottom: calc(58px + env(safe-area-inset-bottom)); z-index: 40;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
 
 /* ---------- 遮罩 / 底部抽屉 / Toast ---------- */
 .overlay {
@@ -179,13 +204,28 @@ details.adv > .adv-body { padding: 14px; }
   display: flex; flex-direction: column;
   overflow: hidden;
 }
-.overlay .overlay-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.overlay .overlay-body { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
 .overlay img, .overlay video { max-width: 100%; max-height: calc(100dvh - 160px); object-fit: contain; }
 .overlay audio { width: 92%; }
 .overlay-actions {
   display: flex; gap: 10px; padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--bg-card) 80%, transparent); overflow-x: auto;
+  flex: none;
 }
+/* 浮层内容框架：撑满整个遮罩，图片区(flex:1)垂直居中，info/actions 固定底部 */
+.overlay-frame { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* 大图左右翻页：两侧半透明箭头（配合图片区域左右滑动） */
+.overlay .nav-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 42px; height: 42px; padding: 0; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(15, 19, 26, 0.55); color: #fff;
+  font-size: 26px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.overlay .nav-arrow.prev { left: 10px; }
+.overlay .nav-arrow.next { right: 10px; }
 
 .sheet-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.45); }
 .sheet {
@@ -209,6 +249,19 @@ details.adv > .adv-body { padding: 14px; }
 }
 .sheet-grab:active { cursor: grabbing; }
 .sheet-grab svg { display: block; }
+
+/* 锚定模式抽屉（提示词助手）：顶缘贴在触发元素下方（由 showSheet 写入 top），
+   四边与屏幕边缘留出边距的悬浮卡片（圆角+淡蓝描边+外发光，2026-10-24 用户指定），
+   不贴任何一边；内容超长时抽屉内部滚动 */
+.sheet.anchored {
+  top: auto; bottom: auto; left: 12px; right: 12px;
+  border: 1px solid rgba(125, 175, 255, 0.45);
+  border-radius: 18px;
+  box-shadow:
+    0 0 18px rgba(96, 150, 255, 0.45),
+    0 0 46px rgba(96, 150, 255, 0.22),
+    0 12px 32px rgba(0, 0, 0, 0.38);
+}
 
 .toast {
   position: fixed; left: 50%; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 18px);

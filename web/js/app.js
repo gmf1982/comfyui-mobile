@@ -30,8 +30,8 @@ const routes = {
 };
 
 function currentRoute() {
-  const name = (location.hash.replace(/^#\/?/, '') || 'workflows').split(/[?#]/)[0];
-  return name in routes ? name : 'workflows';
+  const name = (location.hash.replace(/^#\/?/, '') || 'run').split(/[?#]/)[0];
+  return name in routes ? name : 'run';
 }
 
 async function render() {
@@ -222,15 +222,18 @@ function watchPendingRun() {
 }
 watchPendingRun();
 
-// 云端偏好同步：收藏/设置/多开列表跨域名（Tailscale 与局域网地址是不同 origin）共享
-(async () => {
+// 云端偏好同步：收藏/设置/多开列表/上次工作流跨域名（Tailscale 与局域网地址是不同 origin）共享
+const prefsReady = (async () => {
   if (!getToken()) return;
   if (await pullPrefs().catch(() => false)) { applyTheme(); applyLang(); render(); }
 })();
 
-// 跨刷新恢复上次打开的工作流（静默，不跳转页面）
+// 跨刷新恢复上次打开的工作流（静默，不跳转页面）。
+// 先等云端偏好就绪（封顶 3s，超时退回本机记录）：上次工作流已随偏好上云，
+// 换设备/换地址首次打开要等 pull 采纳云端记录后才有得恢复
 (async () => {
   if (state.workflow) return;
+  await Promise.race([prefsReady, new Promise((r) => setTimeout(r, 3000))]);
   const last = rememberedWorkflow();
   if (!last?.path) return;
   const hashAtStart = location.hash;

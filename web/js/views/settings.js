@@ -54,14 +54,6 @@ export async function settingsView(container) {
     saveSettings();
   });
 
-  // 图库加载数量
-  const maxItems = el('input', { type: 'number', min: '10', max: '500', step: '10' });
-  maxItems.value = state.settings.maxItems;
-  maxItems.addEventListener('change', () => {
-    state.settings.maxItems = Math.max(10, Math.min(500, Number(maxItems.value) || 100));
-    saveSettings();
-  });
-
   // 令牌
   const tokenInput = el('input', { type: 'password', value: getToken() });
   tokenInput.addEventListener('change', () => {
@@ -101,13 +93,6 @@ export async function settingsView(container) {
       el('div', { class: 'field' },
         el('label', { text: t('目标体积（MB，默认 0.9）') }),
         targetMBInput,
-      ),
-    ),
-    el('div', { class: 'card' },
-      el('h3', { text: t('图库') }),
-      el('div', { class: 'field' },
-        el('label', { text: t('每次加载的历史条数（10-500）') }),
-        maxItems,
       ),
     ),
     el('div', { class: 'card' },

@@ -55,13 +55,15 @@ test('生成完成跳图库改为不依赖 WebSocket 的轮询', () => {
   assert.match(appSrc, /clearPendingRun\(\)/);
 });
 
-test('图库删除为批量模式：就地标记、不自动刷新', () => {
+test('图库删除为批量模式：多选 + 确认后就地移除', () => {
   const g = fs.readFileSync('web/js/views/gallery.js', 'utf8');
-  assert.match(g, /const deletedIds = new Set\(\)/);
-  assert.match(g, /function markDeleted/);
-  assert.match(g, /tile-deleted-tag/);
-  assert.match(g, /renderPendingBar/);
-  assert.doesNotMatch(g, /deletedIds\.add\(entry\.promptId\);\s*\n\s*await load\(\);/, '删除后不应立即重载');
+  assert.match(g, /function setSelectMode/, '有多选模式开关');
+  assert.match(g, /function deleteSelected/, '支持批量删除');
+  assert.match(g, /function downloadSelected/, '支持批量下载');
+  assert.match(g, /attachLongPress/, '长按磁贴进入多选');
+  assert.match(g, /output-delete/, '删除走网关批量接口');
+  assert.match(g, /confirmDialog\(/, '删除前有确认');
+  assert.match(g, /function removeItems/, '删除后就地移除对应磁贴');
 });
 
 test('队列页就地预览结果（不跳图库）且无自动跳转', () => {

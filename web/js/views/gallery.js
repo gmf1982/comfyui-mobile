@@ -1,11 +1,15 @@
-/** 图库视图：历史结果浏览（图片/视频/音频）、详情、保存/分享/重跑。 */
+/**
+ * 图库视图：直读网关 output 目录（与 ComfyUI 运行状态解耦，重启不再清空）。
+ * 分页懒加载（IntersectionObserver）、服务端排序/过滤、多选批量删除与下载、详情浮层。
+ */
 import { apiJson } from '../lib/api.js';
-import { el, clear, toast, showOverlay, hideOverlay, confirmDialog } from '../lib/ui.js';
-import { extractMediaFromOutputs } from '../lib/workflow-form.js';
-import { thumbUrl, viewUrl } from '../lib/media.js';
+import { el, clear, toast, confirmDialog } from '../lib/ui.js';
+import { outputFileUrl, outputThumbUrl, humanSize } from '../lib/media.js';
 import { openMediaOverlay } from '../lib/media-actions.js';
-import { state } from '../lib/state.js';
 import { t, tf } from '../lib/i18n.js';
+
+const PAGE_SIZE = 60;
+const PREFS_KEY = 'cm_gallery_prefs';
 
 const TYPE_FILTERS = [
   { key: 'all', label: t('全部') },
@@ -13,38 +17,57 @@ const TYPE_FILTERS = [
   { key: 'video', label: t('视频') },
   { key: 'audio', label: t('音频') },
 ];
+const SORTS = [
+  { key: 'mtime', label: t('日期') },
+  { key: 'name', label: t('名称') },
+  { key: 'size', label: t('大小') },
+];
+
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY)) ?? {};
+    return {
+      sort: SORTS.some((s) => s.key === p.sort) ? p.sort : 'mtime',
+      order: p.order === 'asc' ? 'asc' : 'desc',
+      filter: TYPE_FILTERS.some((f) => f.key === p.filter) ? p.filter : 'all',
+      dir: typeof p.dir === 'string' ? p.dir : '',
+    };
+  } catch {
+    return { sort: 'mtime', order: 'desc', filter: 'all', dir: '' };
+  }
+}
 
 export async function galleryView(container) {
+  const prefs = loadPrefs();
+  let sort = prefs.sort;
+  let order = prefs.order;
+  let filter = prefs.filter;
+  let dir = prefs.dir;
+
+  let items = [];      // 已加载条目（当前过滤/排序下，与网格渲染顺序一致）
+  let total = 0;
+  let loaded = false;
+  let loading = false;
+  let gen = 0;         // 重载代数：丢弃过期分页响应
+  let selectMode = false;
+  const selected = new Set();
+  /** 浮层翻页要求 item 引用稳定：按 path 缓存适配后的媒体条目 */
+  const overlayItems = new Map();
+
+  // ---------- 工具栏 ----------
   const chips = el('div', { class: 'chips' });
-  const grid = el('div', { class: 'gallery-grid' });
-  const pendingBar = el('div', { class: 'card', style: { display: 'none', borderColor: 'color-mix(in srgb, var(--danger) 45%, var(--border))' } });
-  container.append(
-    el('div', { class: 'row', style: { marginBottom: '8px' } },
-      el('button', { class: 'btn small', text: t('刷新'), onclick: () => load() }),
-      el('span', { class: 'muted', id: 'gallery-count' }),
-    ),
-    pendingBar,
-    chips,
-    grid,
-  );
-
-  /** 本次会话已删除的条目（不立即重排列表，避免删一张跳一次） */
-  const deletedIds = new Set();
-  let deletedFiles = 0;
-
-  function renderPendingBar() {
-    if (!deletedIds.size) {
-      pendingBar.style.display = 'none';
-      return;
-    }
-    pendingBar.style.display = '';
-    pendingBar.replaceChildren(el('div', { class: 'row' },
-      el('div', { class: 'grow', style: { fontSize: '14px' }, text: tf('已删除 {n} 项{files}，点刷新更新列表', { n: deletedIds.size, files: deletedFiles ? tf('（含 {n} 个文件）', { n: deletedFiles }) : '' }) }),
-      el('button', { class: 'btn small primary', text: t('刷新列表'), onclick: () => load() }),
-    ));
-  }
-
-  let filter = 'all';
+  const sortChips = el('div', { class: 'chips' });
+  const orderBtn = el('button', {
+    class: 'btn small', title: t('切换升序/降序'), 'aria-label': t('切换升序/降序'),
+    text: order === 'desc' ? '↓' : '↑',
+    onclick: () => { order = order === 'desc' ? 'asc' : 'desc'; orderBtn.textContent = order === 'desc' ? '↓' : '↑'; savePrefs(); reload(); },
+  });
+  const selectBtn = el('button', { class: 'btn small', text: t('多选'), onclick: () => setSelectMode(!selectMode) });
+  const count = el('span', { class: 'muted' });
+  const folderSelect = el('select', {
+    class: 'folder-select', title: t('文件夹'), 'aria-label': t('文件夹'),
+    onchange: () => { dir = folderSelect.value; savePrefs(); reload(); },
+  });
 
   for (const f of TYPE_FILTERS) {
     chips.append(el('button', {
@@ -54,189 +77,385 @@ export async function galleryView(container) {
       onclick: () => {
         filter = f.key;
         for (const c of chips.children) c.classList.toggle('active', c.dataset.filter === filter);
-        render();
+        savePrefs();
+        reload();
+      },
+    }));
+  }
+  for (const s of SORTS) {
+    sortChips.append(el('button', {
+      class: 'chip' + (s.key === sort ? ' active' : ''),
+      'data-sort': s.key,
+      text: s.label,
+      onclick: () => {
+        // 点已选中的排序键 = 翻转升降序；点新键 = 切换排序字段（保持当前方向）
+        if (sort === s.key) {
+          order = order === 'desc' ? 'asc' : 'desc';
+          orderBtn.textContent = order === 'desc' ? '↓' : '↑';
+        } else {
+          sort = s.key;
+          for (const c of sortChips.children) c.classList.toggle('active', c.dataset.sort === sort);
+        }
+        savePrefs();
+        reload();
       },
     }));
   }
 
-  let entries = [];
+  // ---------- 网格与懒加载 ----------
+  const grid = el('div', { class: 'gallery-grid' });
+  const sentinel = el('div', { class: 'gallery-sentinel' });
+  const observer = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) loadMore();
+  }, { rootMargin: '800px' });
+  observer.observe(sentinel);
 
-  async function load() {
-    clear(grid).append(el('div', { class: 'muted', text: t('加载中…') }));
+  // ---------- 多选操作栏 ----------
+  const selCount = el('span', { class: 'grow', style: { fontSize: '14px' } });
+  const selAllBtn = el('button', { class: 'btn small', text: t('全选'), onclick: toggleSelectAll });
+  const selDownloadBtn = el('button', { class: 'btn small primary', text: t('下载'), onclick: downloadSelected });
+  const selDeleteBtn = el('button', { class: 'btn small danger', text: t('删除'), onclick: deleteSelected });
+  const selExitBtn = el('button', { class: 'btn small', text: t('完成'), onclick: () => setSelectMode(false) });
+  const selectBar = el('div', { class: 'card select-bar', style: { display: 'none' } },
+    el('div', { class: 'row' }, selCount, selAllBtn, selDownloadBtn, selDeleteBtn, selExitBtn));
+
+  container.append(
+    el('div', { class: 'row', style: { marginBottom: '8px' } },
+      el('button', { class: 'btn small', text: t('刷新'), onclick: () => reload(true) }),
+      el('div', { class: 'grow' }),
+      folderSelect,
+      count,
+      selectBtn,
+    ),
+    chips,
+    el('div', { class: 'row', style: { marginBottom: '8px', alignItems: 'center' } }, sortChips, orderBtn),
+    grid,
+    sentinel,
+    selectBar,
+  );
+
+  function savePrefs() {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ sort, order, filter, dir })); } catch { /* 隐私模式等场景忽略 */ }
+  }
+
+  /** 拉取含媒体的子目录清单填充下拉；当前选中目录已不存在时回退到根目录。 */
+  async function refreshDirs(refresh = false) {
+    let list;
     try {
-      const data = await apiJson(`/history?max_items=${state.settings.maxItems}`);
-      entries = Object.values(data ?? {})
-        .filter((e) => e?.prompt)
-        .sort((a, b) => (b.prompt[0] ?? 0) - (a.prompt[0] ?? 0))
-        .map((e) => ({
-          promptId: e.prompt[1],
-          promptJson: e.prompt[2],
-          durationMs: (() => {
-            const msgs = e.status?.messages ?? [];
-            const st = msgs.find((m) => m[0] === 'execution_start')?.[1]?.timestamp;
-            const su = msgs.find((m) => m[0] === 'execution_success')?.[1]?.timestamp;
-            const d = st && su ? su - st : null;
-            return d != null && d > 900 ? d : null;
-          })(),
-          status: e.status?.status_str,
-          error: e.status?.messages?.find((m) => m[0] === 'execution_error')?.[1],
-          media: extractMediaFromOutputs(e.outputs, { version: e.prompt[0] }),
-        }));
-      renderPendingBar();
-      render();
+      const data = await apiJson(`/gw/output-dirs${refresh ? '?refresh=1' : ''}`);
+      list = data.dirs ?? [];
+    } catch {
+      return; // 目录清单失败不阻断图库，保留下拉原状
+    }
+    if (!list.includes(dir)) {
+      dir = '';
+      savePrefs();
+    }
+    folderSelect.replaceChildren(el('option', { value: '', text: t('全部文件夹') }));
+    for (const d of list) folderSelect.append(el('option', { value: d, text: d }));
+    folderSelect.value = dir;
+  }
+
+  function fetchPage(offset, refresh = false) {
+    const q = new URLSearchParams({
+      offset: String(offset), limit: String(PAGE_SIZE), sort, order, filter, dir,
+    });
+    if (refresh) q.set('refresh', '1');
+    return apiJson(`/gw/output-list?${q}`);
+  }
+
+  async function reload(refresh = false) {
+    gen++;
+    const myGen = gen;
+    items = [];
+    total = 0;
+    loaded = false;
+    if (selectMode) setSelectMode(false);
+    clear(grid).append(el('div', { class: 'muted', style: { padding: '12px' }, text: t('加载中…') }));
+    refreshDirs(refresh); // 目录清单与首页并行拉取，失败不影响列表
+    try {
+      const data = await fetchPage(0, refresh);
+      if (myGen !== gen) return;
+      total = data.total;
+      items = data.items ?? [];
+      loaded = true;
+      renderLoaded();
     } catch (err) {
-      clear(grid).append(el('div', { class: 'card error-card' }, el('p', { text: t('加载历史失败：') + err.message })));
+      if (myGen === gen) showError(err);
     }
   }
 
-  function render() {
+  async function loadMore() {
+    if (!loaded || loading || items.length >= total) return;
+    loading = true;
+    const myGen = gen;
+    try {
+      const data = await fetchPage(items.length);
+      if (myGen !== gen) return;
+      total = data.total;
+      const next = data.items ?? [];
+      items.push(...next);
+      for (const item of next) grid.append(renderTile(item));
+      updateCount();
+      updateEmpty();
+      // sentinel 仍在视口内时 IntersectionObserver 不会再次触发，重挂以续拉
+      observer.unobserve(sentinel);
+      observer.observe(sentinel);
+    } catch (err) {
+      if (myGen === gen) toast(t('加载列表失败：') + err.message);
+    } finally {
+      loading = false;
+    }
+  }
+
+  function renderLoaded() {
     clear(grid);
-    let shown = 0;
-    for (const entry of entries) {
-      if (entry.error) {
-        if (filter === 'all') {
-          grid.append(errorTile(entry));
-          shown++;
-        }
-        continue;
-      }
-      for (const item of entry.media) {
-        if (filter !== 'all' && item.mediaType !== filter) continue;
-        grid.append(mediaTile(entry, item));
-        shown++;
-      }
-    }
-    document.getElementById('gallery-count').textContent = shown ? tf('共 {n} 项', { n: shown }) : '';
-    if (!shown) {
-      grid.append(el('div', { class: 'empty', style: { gridColumn: '1 / -1' } },
+    for (const item of items) grid.append(renderTile(item));
+    updateCount();
+    updateEmpty();
+  }
+
+  function updateCount() {
+    count.textContent = loaded && total ? tf('共 {n} 项', { n: total }) : '';
+  }
+
+  function updateEmpty() {
+    const empty = grid.querySelector('.gallery-empty');
+    if (loaded && !items.length) {
+      if (empty) return;
+      grid.append(el('div', { class: 'empty gallery-empty', style: { gridColumn: '1 / -1' } },
         el('div', { class: 'big', text: '🖼️' }),
-        el('div', { text: t('还没有生成结果，去「运行」页生成一个吧') }),
+        el('div', { text: dir ? t('该文件夹暂无文件')
+          : filter === 'all' ? t('输出目录还没有文件，去「运行」页生成一个吧') : t('该类型暂无文件') }),
       ));
+    } else if (empty) {
+      empty.remove();
     }
   }
 
-  function errorTile(entry) {
-    const tile = el('div', { class: 'tile', 'data-prompt': entry.promptId },
-      el('div', { class: 'tile-ico', text: '⚠️' }),
-      el('div', { class: 'tile-name', text: t('失败：') + (entry.error?.exception_message ?? entry.promptId.slice(0, 8)) }),
-    );
-    tile.addEventListener('click', () => showEntryDetail(entry, null));
-    return tile;
+  function showError(err) {
+    clear(grid);
+    const msg = err?.status === 501
+      ? t('网关未配置 outputDir，无法列出输出目录')
+      : t('加载列表失败：') + err.message;
+    grid.append(el('div', { class: 'card error-card', style: { gridColumn: '1 / -1' } },
+      el('p', { text: msg }),
+      el('button', { class: 'btn small', text: t('重试'), onclick: () => reload() }),
+    ));
   }
 
-  function mediaTile(entry, item) {
-    const tile = el('div', { class: 'tile', 'data-prompt': entry.promptId });
-    if (item.mediaType === 'image') {
-      // 磁贴用 448px WebP（实测 ≈40KB/张）；原图留到点开时加载
-      tile.append(el('img', { loading: 'lazy', decoding: 'async', src: thumbUrl(item, 50, 448), alt: item.filename }));
-    } else if (item.mediaType === 'video') {
-      // 视频首帧缩略图：metadata 预载 + #t=0.1 定位到开头；失败时露出底下的图标
+  // ---------- 磁贴 ----------
+  function renderTile(item) {
+    const tile = el('div', { class: 'tile', 'data-path': item.path });
+    tile.append(el('div', { class: 'tile-check', text: '✓' }));
+    if (item.kind === 'image') {
+      tile.append(el('img', { loading: 'lazy', decoding: 'async', src: outputThumbUrl(item.path, 448, 62), alt: item.name }));
+    } else if (item.kind === 'video') {
       tile.append(el('div', { class: 'tile-ico', text: '🎬' }));
-      tile.append(el('video', {
-        class: 'tile-video', loading: 'lazy', preload: 'metadata', muted: '', playsinline: '',
-        src: viewUrl(item) + '#t=0.1',
-      }));
+      // 首选 ffmpeg 抽帧封面；网关无 ffmpeg 时回退 <video> 首帧（仅预载元数据，流量极小）
+      const img = el('img', { loading: 'lazy', decoding: 'async', src: outputThumbUrl(item.path, 448, 62), alt: item.name });
+      img.addEventListener('error', () => {
+        img.replaceWith(el('video', {
+          class: 'tile-video', preload: 'metadata', muted: '', playsinline: '',
+          src: outputFileUrl(item.path) + '#t=0.1',
+        }));
+      });
+      tile.append(img);
     } else {
       tile.append(el('div', { class: 'tile-ico', text: '🎵' }));
     }
-    const secs = entry.durationMs ? Math.round(entry.durationMs / 1000) : null;
-    const dur = secs != null
-      ? (secs >= 60 ? tf('{m}分{s}秒', { m: Math.floor(secs / 60), s: secs % 60 }) : tf('{s}秒', { s: secs }))
-      : '';
-    tile.append(el('div', { class: 'tile-name', text: item.filename + (dur ? ' · ' + dur : '') }));
-    if (deletedIds.has(entry.promptId)) {
-      tile.classList.add('tile-deleted');
-      tile.append(el('div', { class: 'tile-deleted-tag', text: t('已删除') }));
-      return tile;
-    }
-    // 角标删除按钮（点按不触发大图预览）
-    const delBtn = el('button', {
-      class: 'tile-del', title: t('删除这张图片'), text: '🗑',
-      onclick: (ev) => {
-        ev.stopPropagation();
-        deleteEntry(entry, item);
-      },
+    tile.append(el('div', { class: 'tile-name', text: `${item.name} · ${humanSize(item.size)}` }));
+    attachLongPress(tile);
+    tile.addEventListener('click', () => {
+      if (tile._lpFired) { tile._lpFired = false; return; }
+      if (selectMode) toggleSelect(item.path, tile);
+      else openDetail(item);
     });
-    tile.append(delBtn);
-    tile.addEventListener('click', () => showEntryDetail(entry, item));
     return tile;
   }
 
-  function showEntryDetail(entry, item) {
-    if (!item) {
-      // 报错条目：展示异常详情
-      const pre = el('pre', {});
-      pre.textContent = JSON.stringify({
-        node_type: entry.error?.node_type,
-        exception: entry.error?.exception_message,
-        traceback: entry.error?.traceback?.slice(-1200),
-      }, null, 2);
-      showOverlay(el('div', {},
-        el('div', { class: 'overlay-body' },
-          el('div', { class: 'card error-card', style: { maxWidth: '92vw', overflow: 'auto', maxHeight: '60dvh' } }, pre)),
-        el('div', { class: 'overlay-actions' },
-          el('button', { class: 'btn', text: t('关闭'), onclick: hideOverlay }),
-          el('button', { class: 'btn danger', text: t('🗑 删除'), onclick: () => { hideOverlay(); deleteEntry(entry, null); } }),
-        ),
-      ));
+  /** 长按 450ms 进入多选并选中当前磁贴；移动超 10px 视为滚动，取消计时。 */
+  function attachLongPress(tile) {
+    let timer = null;
+    let sx = 0;
+    let sy = 0;
+    tile.addEventListener('pointerdown', (e) => {
+      if (selectMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      sx = e.clientX;
+      sy = e.clientY;
+      timer = setTimeout(() => {
+        timer = null;
+        tile._lpFired = true;
+        setSelectMode(true);
+        toggleSelect(tile.dataset.path, tile, true);
+      }, 450);
+    });
+    tile.addEventListener('pointermove', (e) => {
+      if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    });
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    tile.addEventListener('pointerup', cancel);
+    tile.addEventListener('pointercancel', cancel);
+  }
+
+  // ---------- 多选 ----------
+  function setSelectMode(on) {
+    selectMode = on;
+    grid.classList.toggle('selecting', on);
+    selectBtn.textContent = on ? t('退出多选') : t('多选');
+    selectBtn.classList.toggle('primary', on);
+    selectBar.style.display = on ? '' : 'none';
+    if (!on) {
+      selected.clear();
+      for (const tile of grid.querySelectorAll('.tile.selected')) tile.classList.remove('selected');
+    }
+    updateSelectBar();
+  }
+
+  function toggleSelect(path, tile, forceOn = false) {
+    const on = forceOn || !selected.has(path);
+    if (on) selected.add(path);
+    else selected.delete(path);
+    tile.classList.toggle('selected', on);
+    updateSelectBar();
+  }
+
+  function toggleSelectAll() {
+    const allSelected = items.length > 0 && items.every((i) => selected.has(i.path));
+    if (allSelected) {
+      selected.clear();
+      for (const tile of grid.querySelectorAll('.tile.selected')) tile.classList.remove('selected');
+    } else {
+      for (const item of items) {
+        selected.add(item.path);
+        const tile = grid.querySelector(`.tile[data-path="${CSS.escape(item.path)}"]`);
+        if (tile) tile.classList.add('selected');
+      }
+    }
+    updateSelectBar();
+  }
+
+  function updateSelectBar() {
+    selCount.textContent = tf('已选 {n} 项', { n: selected.size });
+    const allSelected = loaded && items.length > 0 && items.every((i) => selected.has(i.path));
+    selAllBtn.textContent = allSelected ? t('取消全选') : t('全选');
+  }
+
+  async function downloadSelected() {
+    const picked = items.filter((i) => selected.has(i.path));
+    if (!picked.length) {
+      toast(t('未选择任何文件'));
       return;
     }
-    openMediaOverlay(item, {
-      promptJson: entry.promptJson,
-      durationMs: entry.durationMs,
-      onDelete: () => deleteEntry(entry, item),
+    toast(tf('开始下载 {n} 个文件…', { n: picked.length }));
+    // 服务端带 Content-Disposition: attachment，浏览器下载管理器立即接管（流式，不必等整文件进内存）
+    for (const item of picked) {
+      const a = document.createElement('a');
+      a.href = outputFileUrl(item.path, true);
+      a.download = item.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      await new Promise((r) => setTimeout(r, 400)); // 连续触发下载需间隔，避免被浏览器拦截
+    }
+  }
+
+  async function deleteSelected() {
+    const paths = items.filter((i) => selected.has(i.path)).map((i) => i.path);
+    if (!paths.length) {
+      toast(t('未选择任何文件'));
+      return;
+    }
+    const ok = await confirmDialog(tf('删除选中的 {n} 个文件？\n磁盘文件将被删除，此操作不可恢复。', { n: paths.length }));
+    if (!ok) return;
+    try {
+      const res = await apiJson('/gw/output-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths }),
+      });
+      removeItems((res.results ?? []).filter((r) => r.ok).map((r) => r.path));
+      const failed = (res.results?.length ?? 0) - (res.deleted ?? 0);
+      toast(failed ? tf('已删除 {n} 个文件，{m} 个失败', { n: res.deleted, m: failed }) : tf('已删除 {n} 个文件', { n: res.deleted }));
+    } catch (err) {
+      toast(t('删除失败：') + err.message);
+    }
+  }
+
+  async function deleteOne(path) {
+    const item = items.find((i) => i.path === path);
+    const label = item?.name ?? path;
+    const ok = await confirmDialog(tf('删除 {name}？\n磁盘文件将被删除，此操作不可恢复。', { name: label }));
+    if (!ok) return;
+    try {
+      await apiJson('/gw/output-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: [path] }),
+      });
+      removeItems([path]);
+      toast(tf('已删除 {name}', { name: label }));
+    } catch (err) {
+      toast(t('删除失败：') + err.message);
+    }
+  }
+
+  /** 从列表与网格中移除已删除条目；未加载满时补拉下一页。 */
+  function removeItems(paths) {
+    const gone = new Set(paths);
+    if (!gone.size) return;
+    items = items.filter((i) => !gone.has(i.path));
+    for (const p of gone) selected.delete(p);
+    for (const tile of [...grid.querySelectorAll('.tile[data-path]')]) {
+      if (gone.has(tile.dataset.path)) tile.remove();
+    }
+    total = Math.max(items.length, total - gone.size);
+    updateCount();
+    updateEmpty();
+    if (selectMode) updateSelectBar();
+    if (items.length < total) loadMore();
+  }
+
+  // ---------- 详情浮层 ----------
+  function toOverlayItem(item) {
+    let ov = overlayItems.get(item.path);
+    if (!ov) {
+      ov = {
+        filename: item.name,
+        name: item.name,
+        mediaType: item.kind,
+        fileUrl: outputFileUrl(item.path),
+        downloadUrl: outputFileUrl(item.path, true),
+        path: item.path,
+        size: item.size,
+        mtimeMs: item.mtimeMs,
+      };
+      overlayItems.set(item.path, ov);
+    }
+    return ov;
+  }
+
+  /** PNG 元数据里的提示词按路径缓存（含「确认没有」的结果），同一文件只读一次 */
+  const promptCache = new Map();
+  function fetchPrompt(path) {
+    if (!promptCache.has(path)) {
+      promptCache.set(path, apiJson(`/gw/output-prompt?path=${encodeURIComponent(path)}`)
+        .then((d) => d.prompt ?? null)
+        .catch(() => null));
+    }
+    return promptCache.get(path);
+  }
+
+  function openDetail(item) {
+    openMediaOverlay(toOverlayItem(item), {
+      getPromptJson: (media) => fetchPrompt(media.path),
+      onDelete: (media) => deleteOne(media.path),
+      list: items.map((i) => ({ item: toOverlayItem(i), onDelete: () => deleteOne(i.path) })),
     });
   }
 
-  /**
-   * 删除一条图库结果：先从 ComfyUI 历史中移除（必定生效），
-   * 再尽力删除磁盘文件（需网关配置 outputDir），并如实告知结果。
-   */
-  async function deleteEntry(entry, item) {
-    const label = item?.filename ?? tf('任务 {id}', { id: entry.promptId.slice(0, 8) });
-    const ok = await confirmDialog(tf('删除 {name}？\n历史记录会被移除；若网关已配置 outputDir，磁盘文件也会一并删除。', { name: label }));
-    if (!ok) return;
-    try {
-      await apiJson('/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ delete: [entry.promptId] }),
-      });
-    } catch (err) {
-      toast(t('移除历史失败：') + err.message);
-      return;
-    }
-    let fileNote = '';
-    let diskDeleted = false;
-    if (item) {
-      try {
-        const q = new URLSearchParams({ filename: item.filename ?? '', subfolder: item.subfolder ?? '', type: item.type ?? 'output' });
-        await apiJson(`/gw/output-file?${q}`, { method: 'DELETE' });
-        diskDeleted = true;
-        fileNote = t('（含磁盘文件）');
-      } catch (err) {
-        fileNote = err.status === 501 ? t('（磁盘文件未删除：网关未配置 outputDir）') : t('（磁盘文件未删除：') + err.message + t('）');
-      }
-    }
-    deletedIds.add(entry.promptId);
-    if (diskDeleted) deletedFiles++;
-    markDeleted(entry);
-    renderPendingBar();
-    toast(tf('已删除 {name}{note}', { name: label, note: fileNote }) + t('（可继续删除，点「刷新列表」更新）'));
-  }
-
-  /** 在被删条目的磁贴上就地标记，避免列表跳动。 */
-  function markDeleted(entry) {
-    for (const tile of grid.querySelectorAll('.tile[data-prompt]')) {
-      if (tile.dataset.prompt !== entry.promptId) continue;
-      tile.classList.add('tile-deleted');
-      if (!tile.querySelector('.tile-deleted-tag')) {
-        tile.append(el('div', { class: 'tile-deleted-tag', text: t('已删除') }));
-      }
-      const badge = tile.querySelector('.tile-del');
-      if (badge) badge.remove();
-    }
-  }
-
-  await load();
+  await reload();
 }

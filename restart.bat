@@ -25,7 +25,10 @@ if not defined FOUND echo   端口空闲，无需结束旧进程 / Port is free;
 rem 等待端口释放
 ping -n 2 127.0.0.1 >nul
 
-echo 正在启动网关 / Starting gateway... 停止 / Stop: press Ctrl+C in this window
+rem 把本命令窗口隐藏到系统托盘 / Hide this console window into the system tray
+rem 左键点托盘图标 = 显示/隐藏窗口（看日志）；右键 = 显示/隐藏、退出
+if exist "%~dp0Tray.exe" "%~dp0Tray.exe" "ComfyUI Mobile Gateway"
+echo 正在启动网关 / Starting gateway... 停止 / Stop: show the window from the tray icon, then press Ctrl+C
 echo.
 node server/src/index.js
 

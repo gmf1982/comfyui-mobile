@@ -3,100 +3,131 @@
  * 同一套客户端同时覆盖：在线（智谱开放平台 open.bigmodel.cn/api/paas/v4）与
  * 本地（Ollama http://127.0.0.1:11434/v1、llama.cpp 含多模型路由模式、LM Studio 等）。
  * API Key 只保存在网关配置里，永不下发手机端；未配置时网关回 501，手机端回退内置规则增强。
+ *
+ * 增强规则按模式取自 server/prompts/ 下的独立 txt（文生图 t2i.txt、图生图·编辑 i2i.txt、
+ * 视频 h3.txt），每次请求实时读取：改完规则存盘即生效，不必重启网关。
  */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pick } from './lang.js';
+
+/** 手机端 detectMode 的三种模式 → 规则文件名。 */
+const MODE_RULE_FILES = { t2i: 't2i.txt', edit: 'i2i.txt', video: 'h3.txt' };
+
+const PROMPT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prompts');
+
+/** 读取规则文件（trim 顺带去掉首部 BOM）。缺失或为空即响，让调用方回退规则增强。 */
+function loadRuleFile(mode) {
+  const file = MODE_RULE_FILES[mode] ?? MODE_RULE_FILES.t2i;
+  const full = path.join(PROMPT_DIR, file);
+  let text;
+  try {
+    text = readFileSync(full, 'utf8');
+  } catch {
+    throw new Error(`规则文件缺失：server/prompts/${file}`);
+  }
+  const rule = text.trim();
+  if (!rule) throw new Error(`规则文件为空：server/prompts/${file}`);
+  return rule;
+}
 
 /**
  * 单次增强的默认硬超时，可被 promptLlm.models 条目的可选 timeoutMs（毫秒）按模型覆盖。
  * 本地 llama.cpp 路由（--models-max 1）按需换装模型，冷加载 27B 级 GGUF 可能
- * 需要一两分钟；思考型模型还要先耗完思考预算再出正文，因此大模型条目应放宽 timeoutMs。
+ * 需要一两分钟；新规则要求 400-500 词的长段描述，思考型模型还要先耗完思考预算，
+ * 因此默认超时放宽到 3 分钟，大模型条目应再按实测放宽 timeoutMs。
  */
-const TIMEOUT_MS = 90000;
+const TIMEOUT_MS = 180000;
 
 /**
- * 检测小模型常见的"复读机"退化输出：同一短片段（≤6 字，如"海浪"）出现 ≥4 次即判退化。
+ * 长段扩写的输出上限：新规则要求三四百词（约 20 句）的完整画面描述，
+ * 3000 token 会把中文描述拦腰截断；思考型模型的思考段也计在这份额里。
+ */
+const MAX_TOKENS = 8000;
+
+/**
+ * 检测"复读机"式退化输出，分长短两档：
+ * - 短输出（≤160 字，旧规则的量级）：同一 ≤6 字片段出现 ≥4 次即判退化。
+ * - 长输出（新规则的三四百词描述）：the / 画面 这类短词高频出现是正常行文，
+ *   按词频判会误杀，只抓真正的循环塌缩——同一片段连续重复三遍。
  * 长片段重复可能是排比修辞，不判。退化时调用方按失败处理（手机端自动回退规则增强），
  * 绝不能把这种结果替换进输入框。
  */
 export function isDegenerate(text) {
-  const parts = String(text).split(/[，。,.;；、\s]+/).filter(Boolean);
-  const counts = new Map();
-  for (const p of parts) counts.set(p, (counts.get(p) ?? 0) + 1);
-  for (const [seg, n] of counts) {
-    if (n >= 4 && seg.length <= 6) return true;
+  const s = String(text);
+  const hasWord = /[^\s，。,.;；、]/;
+  if (s.length <= 160) {
+    const parts = s.split(/[，。,.;；、\s]+/).filter(Boolean);
+    const counts = new Map();
+    for (const p of parts) counts.set(p, (counts.get(p) ?? 0) + 1);
+    for (const [seg, n] of counts) {
+      if (n >= 4 && seg.length <= 6) return true;
+    }
+    return false;
+  }
+  for (let len = 4; len <= 30; len++) {
+    for (let i = 0; i + len * 3 <= s.length; i++) {
+      const block = s.slice(i, i + len);
+      if (hasWord.test(block) && s.startsWith(block, i + len) && s.startsWith(block, i + len * 2)) return true;
+    }
   }
   return false;
 }
 
-/** 英文输入的增强规则：与中文规则同义，按英文习惯控制词数与句式。 */
-function buildEnglishSystemPrompt(profileKey, mode) {
-  const isEdit = mode === 'edit';
-  const base = 'You enhance prompts for image/video generation. The user gives one raw prompt; output one complete enhanced prompt. Rules:'
-    + '1) Preserve every subject, scene, action, style and clothing detail the user wrote exactly; never replace them with a different scene or style;'
-    + (isEdit
-      ? '2) This is an instruction for an image-editing model, not a scene description: state only the edit itself (what to change/add/remove or which direction to extend). Never invent specific environments, people, objects or lighting that are not in the image; state that everything else stays unchanged and the edited edges blend naturally;'
-      : '2) Add only missing details (appearance/material/environment/lighting/composition/mood) that are consistent with the existing content;')
-    + '3) Output only the prompt: no explanation, no title, no quotes;'
-    + '4) Keep it under 80 words;'
-    + '5) Do not repeat the same phrase; avoid stacked adjectives and write 1-3 natural sentences.';
-  const byMode = mode === 'video'
-    ? ' This is a video prompt: organize it as subject + action + camera movement + mood; motion must be continuous and achievable in a 6-10 second shot.'
-    : isEdit
-      ? ' For "extend/outpaint" requests, output only the extension instruction: extend the frame outward, continue the original content, style and lighting into the new area, blend naturally, and add no new scene details.'
-      : '';
-  const byModel = {
-    qwen: isEdit ? ' Target model: Qwen-Image Edit. Write the instruction in natural English.' : ' Target model: Qwen-Image 2.1. Write a detailed, natural English paragraph.',
-    zimage: ' Target model: Z-Image. Write concise, direct natural English; avoid adjective stacking.',
-    krea: isEdit ? ' Target model: FLUX.2 Krea Edit. Write an English editing instruction and end with "keep everything else unchanged".' : ' Target model: FLUX.2 Krea. Write a natural English paragraph in photographic style; no tag lists or empty words like masterpiece.',
-    h3: ' Target model: MiniMax H3 video generation. Write in English with a director-like description.',
-    generic: ' Target model unknown. Write in English.',
-  }[profileKey] ?? ' Target model unknown. Write in English.';
-  return base + byMode + byModel;
+/**
+ * 构造系统提示词：直接返回当前模式对应的规则文件内容（见 server/prompts/）。
+ * @param {'t2i'|'edit'|'video'} mode 手机端检测到的模式
+ * @returns {string}
+ */
+export function buildSystemPrompt(mode) {
+  return loadRuleFile(mode);
+}
+
+/** 从 open（指向开引号）之后找未转义的闭引号；被截断时返回 -1。 */
+function findClosingQuote(raw, open) {
+  for (let i = open; i < raw.length; i++) {
+    if (raw[i] !== '"') continue;
+    let backslashes = 0;
+    for (let j = i - 1; j >= 0 && raw[j] === '\\'; j--) backslashes++;
+    if (backslashes % 2 === 0) return i;
+  }
+  return -1;
 }
 
 /**
- * 构造系统提示词。原则借鉴 Z-image-prompt-builder 的 PE 约束：
- * 核心不可变（用户已写明的要素不得改写替换），只补缺失的外围信息，直接输出提示词本身。
- * @param {string} profileKey 模型档案 key（qwen/zimage/krea/h3/generic）
- * @param {string} mode t2i | edit | video
- * @param {'zh'|'en'} [lang] 输出语言（由输入语言决定）
- * @returns {string}
+ * t2i.txt / i2i.txt 要求模型返回单行 JSON（rewritten_prompt + wh_ratio + ratio_follow）。
+ * 这里只取 rewritten_prompt：宽高比按选择不落地，既不混进提示词也不改工作流参数。
+ * 长描述常在输出中途被 max_tokens 截断，JSON.parse 会整块失败，所以再手动抠一次字段值；
+ * 抠不出来（模型没按 JSON 输出）返回空串，调用方保留原文。
+ * @param {string} raw 已剥除思考段与围栏的模型输出
+ * @returns {string} 提示词正文，或 ''
  */
-export function buildSystemPrompt(profileKey, mode, lang = 'zh') {
-  if (lang === 'en') return buildEnglishSystemPrompt(profileKey, mode);
-  const isEdit = mode === 'edit';
-  const base = '你是图像/视频生成提示词增强助手。用户给出一句原始提示词，你输出增强后的完整提示词。规则：'
-    + '1) 用户已写明的主体、场景、动作、风格、衣物等细节一律保留原意原词，不得替换成别的场景或风格；'
-    + (isEdit
-      // 编辑指令是操作说明：编辑模型看得到原图，替它虚构画面细节只会得到跑题结果。
-      ? '2) 这是给图像编辑模型的操作指令，不是画面描述：只把编辑操作本身写清楚（改什么/加什么/删什么/往哪个方向扩展），'
-        + '严禁编造画面里没有的具体环境、人物、物体或光线；要写明其余内容保持原样、改动边缘与原图过渡自然；'
-      : '2) 只补充缺失的细节（外观/材质/环境层次/光线/构图/氛围），补充内容必须与已有内容一致、不得冲突；')
-    + '3) 不写解释、不写标题、不加引号，只输出提示词本身；'
-    + '4) 控制在 120 字以内；'
-    + '5) 严禁复读：同一个词全句最多出现一次，不要罗列堆砌，写成一至三句通顺的自然语言。';
-  const byMode = mode === 'video'
-    ? ' 这是视频提示词：按「主体+动作+镜头运动+氛围」组织，动作连贯可实现，约 6-10 秒的镜头。'
-    : isEdit
-      ? ' "扩展图片/扩图/外扩"类指令只输出扩图指令本身：将画面向外扩展，新增区域延续原图内容、风格与光线，衔接自然，不添加任何新场景细节。'
-      : '';
-  const byModel = {
-    qwen: isEdit ? ' 目标模型 Qwen-Image 编辑版：用中文自然句写指令。' : ' 目标模型 Qwen-Image 2.1：用中文自然长句，细节丰富，不必中英混排。',
-    zimage: ' 目标模型 Z-Image：用中文自然语言，简洁直接，不堆砌形容词。',
-    krea: isEdit ? ' 目标模型 FLUX.2 Krea 编辑：输出英文编辑指令，写明改动，结尾强调 keep everything else unchanged。' : ' 目标模型 FLUX.2 Krea：输出英文自然段落（摄影描述风格），不要 tag 堆砌，不要 masterpiece 类空洞词。',
-    h3: ' 目标模型 MiniMax H3 视频生成：中文，导演视角描述。',
-    generic: ' 目标模型未知：沿用用户的主要语言。',
-  }[profileKey] ?? ' 目标模型未知：沿用用户的主要语言。';
-  return base + byMode + byModel;
+export function parseRewrittenPrompt(raw) {
+  const start = raw.indexOf('{');
+  if (start === -1) return '';
+  try {
+    const value = JSON.parse(raw.slice(start, raw.lastIndexOf('}') + 1))?.rewritten_prompt;
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  } catch { /* 截断或非法 JSON，走下面的字段兜底 */ }
+  const key = '"rewritten_prompt"';
+  const at = raw.indexOf(key, start);
+  if (at === -1) return '';
+  const colon = raw.indexOf(':', at + key.length);
+  const open = colon === -1 ? -1 : raw.indexOf('"', colon + 1);
+  if (open === -1) return '';
+  const close = findClosingQuote(raw, open + 1);
+  const body = close === -1 ? raw.slice(open + 1) : raw.slice(open + 1, close);
+  return body.replace(/\\n/g, ' ').replace(/\\t/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
 }
 
 /**
  * 调用 OpenAI 兼容 chat/completions 生成增强提示词。
  * @param {{baseUrl: string, apiKey?: string, model: string, timeoutMs?: number}} llm 网关 promptLlm 配置
- * @param {{text: string, profileKey: string, mode: string, lang?: 'zh'|'en'}} input
+ * @param {{text: string, mode: string, lang?: 'zh'|'en', image?: string|null}} input image 为当前输入图的 data URL（仅视觉模型可用）
  * @returns {Promise<{text: string}>}
  */
-export async function enhanceWithLlm(llm, { text, profileKey, mode, lang = 'zh' }) {
+export async function enhanceWithLlm(llm, { text, mode, lang = 'zh', image = null }) {
   const base = String(llm.baseUrl).replace(/\/+$/, '');
   // 配置可能是 https://.../v1、https://.../api/paas/v4 或裸 Ollama 根地址；
   // 裸根地址先按原路径失败时再试 /v1，兼容 Ollama 的 OpenAI 兼容端点。
@@ -110,10 +141,20 @@ export async function enhanceWithLlm(llm, { text, profileKey, mode, lang = 'zh' 
     presence_penalty: 0.3,
     // 思考型模型（如 reasoning 预算 2048 的本地路由预设）会先耗思考 token 再出正文，
     // 上限太小会让正文为空；思考段由下方剥除逻辑处理，不会进入结果。
-    max_tokens: 3000,
+    max_tokens: MAX_TOKENS,
     messages: [
-      { role: 'system', content: buildSystemPrompt(profileKey, mode, lang) },
-      { role: 'user', content: text },
+      { role: 'system', content: buildSystemPrompt(mode) },
+      // 图生图·编辑：网关已把当前输入图取成 data URL，按 OpenAI 多模态格式附带；
+      // 纯文本模型会在端点侧报 400，由手机端回退无图重试。
+      {
+        role: 'user',
+        content: image
+          ? [
+            { type: 'text', text },
+            { type: 'image_url', image_url: { url: image } },
+          ]
+          : text,
+      },
     ],
   });
   let res = null;
@@ -153,7 +194,10 @@ export async function enhanceWithLlm(llm, { text, profileKey, mode, lang = 'zh' 
     out = nl === -1 ? '' : out.slice(nl + 1);
   }
   if (out.endsWith(fence)) out = out.slice(0, -fence.length);
+  // 图像两种模式的规则要求 JSON 输出，视频规则直接给正文——只在图像模式里取 rewritten_prompt。
+  if (mode !== 'video') out = parseRewrittenPrompt(out) || out;
   out = out.replace(/^["“”']+|["“”']+$/g, '').trim();
+  if (!out) throw new Error(pick(lang, 'LLM 返回内容为空', 'LLM returned an empty response'));
   if (isDegenerate(out)) throw new Error(pick(lang, '模型输出重复退化', 'Model output degenerated into repetition'));
   return { text: out };
 }

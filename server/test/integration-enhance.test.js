@@ -159,3 +159,44 @@ test('空文本返回 400；鉴权仍走网关令牌', async (t) => {
   });
   assert.equal(bad.status, 401, '错误令牌被网关拒绝，不触达 LLM');
 });
+
+/** ComfyUI /view 桩：/view?filename=ok.png 回 PNG 字节，其余 404。 */
+async function stubComfy() {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://x');
+    if (url.pathname === '/view' && url.searchParams.get('filename') === 'ok.png') {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(png);
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const port = await listen(server);
+  return { port, close: () => { server.closeAllConnections?.(); return new Promise((r) => server.close(r)); } };
+}
+
+test('图生图带图增强：网关代取 /view 图片转 data URL 附进多模态消息；取图失败回退纯文本', async (t) => {
+  const [stub, comfy] = await Promise.all([stubLlm(), stubComfy()]);
+  const { base, gw } = await makeGateway({
+    upstream: `http://127.0.0.1:${comfy.port}`,
+    promptLlm: { enabled: true, baseUrl: `http://127.0.0.1:${stub.port}/v1`, apiKey: 'k', model: 'vision-m' },
+  });
+  t.after(async () => { await gw.close(); await stub.close(); await comfy.close(); });
+
+  const res = await post(base, { text: '把衣服换成红色', mode: 'edit', image: { filename: 'ok.png', subfolder: '', type: 'input' } });
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.image, true, '响应应标注图片已附带');
+  const userMsg = stub.seen[0].payload.messages.find((m) => m.role === 'user');
+  assert.ok(Array.isArray(userMsg.content), '带图时 user 内容应为多模态数组');
+  assert.equal(userMsg.content[0].text, '把衣服换成红色');
+  assert.equal(userMsg.content[1].type, 'image_url');
+  assert.equal(userMsg.content[1].image_url.url, `data:image/png;base64,${Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')}`);
+
+  const miss = await post(base, { text: '把衣服换成红色', mode: 'edit', image: { filename: 'missing.png' } });
+  assert.equal(miss.status, 200, '取图失败不阻断增强');
+  assert.equal((await miss.json()).image, false);
+  const plain = stub.seen[1].payload.messages.find((m) => m.role === 'user');
+  assert.equal(plain.content, '把衣服换成红色', '取图失败回退纯文本消息');
+});

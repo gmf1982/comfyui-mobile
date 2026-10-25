@@ -117,6 +117,8 @@ const EN = {
   '（磁盘文件未删除：网关未配置 outputDir）': ' (file on disk kept: gateway outputDir not configured)',
   '（含磁盘文件）': ' (file on disk deleted)',
   '⬇ 保存到手机': '⬇ Save to phone', '📤 用作图片输入': '📤 Use as image input', '🔍 查看大图': '🔍 View full size',
+  '上一张': 'Previous', '下一张': 'Next',
+  '📋 复制提示词': '📋 Copy prompt', '已复制提示词': 'Prompt copied', '复制失败': 'Copy failed',
   '⬇ 保存': '⬇ Save',
   '任务 ': 'Job ',
   // 队列
@@ -297,6 +299,19 @@ const EN = {
   '删除 {name}？\n历史记录会被移除；若网关已配置 outputDir，磁盘文件也会一并删除。': 'Delete {name}?\nThe history entry is removed; if the gateway has outputDir configured, the file on disk is deleted too.',
   '（可继续删除，点「刷新列表」更新）': ' (keep going; tap Refresh to update)',
   '移除历史失败：': 'Failed to remove history: ', '（磁盘文件未删除：': ' (file on disk kept: ',
+  // 图库·目录直读（排序 / 多选 / 批量操作）
+  '日期': 'Date', '名称': 'Name', '大小': 'Size', '切换升序/降序': 'Toggle ascending/descending',
+  '多选': 'Select', '退出多选': 'Exit select', '全选': 'Select all', '取消全选': 'Deselect all', '完成': 'Done',
+  '已选 {n} 项': '{n} selected', '未选择任何文件': 'Nothing selected',
+  '开始下载 {n} 个文件…': 'Downloading {n} files…',
+  '删除选中的 {n} 个文件？\n磁盘文件将被删除，此操作不可恢复。': 'Delete {n} selected files?\nThe files are removed from disk and cannot be recovered.',
+  '删除 {name}？\n磁盘文件将被删除，此操作不可恢复。': 'Delete {name}?\nThe file is removed from disk and cannot be recovered.',
+  '已删除 {n} 个文件': 'Deleted {n} files', '已删除 {n} 个文件，{m} 个失败': 'Deleted {n} files, {m} failed',
+  '已删除 {name}': 'Deleted: {name}', '加载列表失败：': 'Failed to load the list: ', '重试': 'Retry',
+  '输出目录还没有文件，去「运行」页生成一个吧': 'No files in the output folder yet — generate something on the Run page',
+  '该类型暂无文件': 'No files of this type',
+  '全部文件夹': 'All folders', '该文件夹暂无文件': 'No files in this folder', '文件夹': 'Folder',
+  '网关未配置 outputDir，无法列出输出目录': 'outputDir is not configured on the gateway; the output folder cannot be listed',
   // 模板库
   '{name}（{n}）': '{name} ({n})', '{n} 条': '{n}', '打开模板：': 'Opening template: ', '打开示例：': 'Opening example: ',
   '仅显示前 60 条，请 refine 搜索词': 'Showing first 60 — refine your search',
@@ -396,6 +411,18 @@ const EN = {
   // 第二十四轮（8080 直连 + 不用 LLM 开关 + 编辑指令防跑题）
   '不用 LLM（内置规则）': 'No LLM (built-in rules)',
   '来源：内置规则（已选择不使用 LLM）': 'Source: built-in rules (LLM disabled by choice)',
+  // 第三十二轮（图生图带图增强 + 收藏分类折叠 + 移除常用词）
+  '增强时附带当前图片：{f}（需支持视觉的模型）': 'Current image will be attached: {f} (needs a vision model)',
+  '未找到图片输入，将按纯文本增强': 'No image input found — enhancing as text only',
+  '模型未能读取图片，已按纯文本增强': 'Model could not read the image — enhanced as text only',
+  '已读取当前图片': 'Current image read',
+  '默认收藏': 'Defaults', '收藏到': 'Save to', '新建分类': 'New folder',
+  '重命名分类': 'Rename folder', '删除分类（含其中收藏）': 'Delete folder (with its favorites)',
+  '确认': 'Sure?', '已有同名分类': 'Folder name already exists',
+  '分类名': 'Folder name', '该分类暂无收藏': 'No favorites in this folder yet',
+  '重命名收藏': 'Rename favorite', '点击正文插入光标处': 'Tap the text to insert at the cursor',
+  '移动到其它分类': 'Move to another folder', '把这条收藏移动到？': 'Move this favorite to…?',
+  '已移动到「{f}」': 'Moved to "{f}"',
   // 第三十轮（ComfyUI 远程启动）
   '启动 ComfyUI': 'Start ComfyUI',
   '重启 ComfyUI': 'Restart ComfyUI',

@@ -19,6 +19,8 @@ const DEFAULTS = {
   webDir: 'web',
   outputDir: '',
   inputDir: '',
+  // 图库视频缩略图（ffmpeg 抽帧）：留空用 PATH 里的 ffmpeg；找不到时视频磁贴退化为 <video> 首帧
+  ffmpegPath: '',
   tunnel: false,
   tailscale: '',
   tailscaleHttpsPort: 8443,
@@ -46,7 +48,7 @@ const OVERRIDABLE = new Set([
   'port', 'host', 'upstream', 'token', 'maxUploadMB', 'rateLimitPerMin',
   'authFailsPerMin', 'banMinutes', 'rangeFallbackMB', 'webDir', 'tls',
   'tunnel', 'outputDir', 'inputDir', 'tailscale', 'tailscaleHttpsPort',
-  'thumbCacheDir', 'promptLlm', 'comfyuiLaunch', 'comfyuiCwd',
+  'thumbCacheDir', 'ffmpegPath', 'promptLlm', 'comfyuiLaunch', 'comfyuiCwd',
 ]);
 
 /**
